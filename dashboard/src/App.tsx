@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, FileAudio, KeyRound, LogOut, Settings as SettingsIcon, Sliders, UserRound, Users as UsersIcon } from "lucide-react";
+import { Activity, FileAudio, KeyRound, LogOut, Mic, Settings as SettingsIcon, Sliders, UserRound, Users as UsersIcon } from "lucide-react";
 import { api, errorMessage, setUnauthorizedHandler, type Me } from "@/lib/api";
 import { Link, navigate, useRoute } from "@/lib/router";
 import { cn } from "@/lib/utils";
@@ -14,9 +14,11 @@ import { Models } from "@/pages/Models";
 import { Settings } from "@/pages/Settings";
 import { Account } from "@/pages/Account";
 import { Onboarding } from "@/pages/Onboarding";
+import { Record } from "@/pages/Record";
 
 const NAV = [
   { to: "/", label: "Overview", icon: Activity, admin: true },
+  { to: "/record", label: "Record", icon: Mic, admin: false },
   { to: "/meetings", label: "Meetings", icon: FileAudio, admin: false },
   { to: "/clients", label: "Clients", icon: KeyRound, admin: false },
   { to: "/users", label: "Users", icon: UsersIcon, admin: true },
@@ -58,6 +60,7 @@ export function App() {
   const logout = async () => { await api.logout(); refresh(); navigate("/"); };
   const page = path.startsWith("/meetings/") ? <MeetingPage id={decodeURIComponent(path.slice("/meetings/".length))} me={me} />
     : path === "/meetings" ? <Meetings />
+    : path === "/record" ? <Record />
     : path === "/clients" ? <Clients isAdmin={isAdmin} />
     : path === "/users" && isAdmin ? <Users meId={me.user.id} />
     : path === "/models" && isAdmin ? <Models />
@@ -82,7 +85,7 @@ export function App() {
         </ul>
         <div className="flex-1" />
         <div className="border-t border-border px-4 py-3 text-[12px] text-muted">
-          <div className="truncate text-fg/80">{me.user.email}</div>
+          <div className="truncate text-fg/80">{me.user.name || me.user.email}</div>
           <div className="text-[11px]">{isAdmin ? "Admin" : "User"}</div>
           <button className="mt-1.5 inline-flex items-center gap-1 hover:text-fg" onClick={logout}><LogOut className="h-3 w-3" /> Log out</button>
         </div>

@@ -47,20 +47,21 @@ export function Overview() {
           {d.capabilities.transcription ? <Badge tone="good">Ready</Badge> : <Link to="/models"><Button size="sm" variant="primary">Install a model</Button></Link>}
         </Row>
         <Row label="Speaker separation" hint={d.speakerModels.installed ? "pyannote segmentation 3.0 · TitaNet" : "No model yet"}>
-          {d.speakerModels.installed ? <Badge tone="good">Ready</Badge> : <Button size="sm" variant="primary" loading={d.speakerModels.downloading} onClick={() => api.downloadSpeakerModels()}>{d.speakerModels.downloading ? `${Math.round(d.speakerModels.progress * 100)}%` : "Download"}</Button>}
+          {d.speakerModels.installed ? <Badge tone="good">Ready</Badge> : <Button size="sm" variant="primary" loading={d.speakerModels.downloading} onClick={() => api.downloadSpeakerModels()}>{d.speakerModels.downloading ? `${Math.round(d.speakerModels.progress * 100)}%` : "Install a model"}</Button>}
         </Row>
         <Row label="Notes" hint={d.capabilities.llm ?? "No AI model yet"}>
-          {d.capabilities.llm ? <Badge tone="good">Ready</Badge> : <Link to="/models"><Button size="sm">Install a model</Button></Link>}
+          {d.capabilities.llm ? <Badge tone="good">Ready</Badge> : <Link to="/models"><Button size="sm" variant="primary">Install a model</Button></Link>}
         </Row>
       </Card>
 
       <h3 className="mb-2 mt-6 font-display text-[11.5px] font-bold uppercase tracking-wider text-muted">Hardware</h3>
       <Card>
-        <Row label="CPU"><span className="text-[13px]">{d.hardware.cpuBrand ?? d.hardware.arch} · {d.hardware.cpuCores} cores</span></Row>
+        <Row label="CPU" hint={`${d.hardware.cpuCores} cores`}><span className="text-[13px]">{d.hardware.cpuBrand ?? d.hardware.arch}</span></Row>
         <Row label="GPU"><span className="text-[13px]">{d.hardware.gpu ?? "None"}</span></Row>
         <Row label="Memory"><span className="text-[13px]">{fmtBytes(d.hardware.memoryBytes) || "Unknown"}</span></Row>
-        <Row label="System"><span className="text-[13px]">{d.hardware.os} {d.hardware.osVersion} · {d.hardware.arch}</span></Row>
-        <Row label="Huddle Server"><span className="text-[13px]">{d.version} · engine {d.engineVersion}</span></Row>
+        <Row label="System" hint={d.hardware.arch}><span className="text-[13px]">{d.hardware.os} {d.hardware.osVersion}</span></Row>
+        <Row label="Huddle Server" hint="Version"><span className="text-[13px]">{d.version}</span></Row>
+        <Row label="Huddle engine" hint="Version"><span className="text-[13px]">{d.engineVersion}</span></Row>
       </Card>
     </>
   );

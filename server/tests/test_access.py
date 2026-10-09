@@ -35,16 +35,18 @@ def _second_client(client):
 def test_invite_flow_and_user_boundary(admin):
     a = admin
     # invitation link → active account with role user
+    assert a.post("/api/invites", json={"email": "blep"}, headers=H).status_code == 400
     inv = a.post("/api/invites", json={"email": "friend@example.com"}, headers=H).json()
     assert inv["token"] and "/join/" in inv["url"]
-    assert a.get("/api/invites").json()[0]["used"] is False
+    listed = a.get("/api/invites").json()[0]
+    assert listed["used"] is False and listed["url"] == inv["url"]      # copyable again while open
     u = _second_client(a)
     assert u.get(f"/api/auth/invite/{inv['token']}").json() == {"valid": True, "email": "friend@example.com"}
-    r = u.post("/api/auth/register", json={"email": "other@example.com", "password": "ten chars long!", "invite": inv["token"]}, headers=H)
+    r = u.post("/api/auth/register", json={"name": "Other", "email": "other@example.com", "password": "ten chars long!", "invite": inv["token"]}, headers=H)
     assert r.status_code == 400 and "another e-mail" in r.json()["detail"]
-    r = u.post("/api/auth/register", json={"email": "friend@example.com", "password": "ten chars long!", "invite": inv["token"]}, headers=H)
+    r = u.post("/api/auth/register", json={"name": "Friend", "email": "friend@example.com", "password": "ten chars long!", "invite": inv["token"]}, headers=H)
     assert r.status_code == 200 and r.json()["pending"] is False and r.json()["user"]["role"] == "user"
-    assert a.get("/api/invites").json()[0]["used"] is True
+    assert a.get("/api/invites").json()[0]["used"] is True and a.get("/api/invites").json()[0]["url"] is None
     assert u.get(f"/api/auth/invite/{inv['token']}").json()["valid"] is False   # single use
 
     # the user cannot reach admin things
@@ -103,18 +105,18 @@ def test_invite_flow_and_user_boundary(admin):
 def test_open_registration_waits_for_approval(admin):
     a = admin
     u = _second_client(a)
-    r = u.post("/api/auth/register", json={"email": "walkin@example.com", "password": "ten chars long!"}, headers=H)
+    r = u.post("/api/auth/register", json={"name": "Walk-in", "email": "walkin@example.com", "password": "ten chars long!"}, headers=H)
     assert r.status_code == 400 and "invitation" in r.json()["detail"]
     a.put("/api/server", json={"registration": "open"}, headers=H)
     assert u.get("/api/setup").json()["registration"] == "open"
-    r = u.post("/api/auth/register", json={"email": "walkin@example.com", "password": "ten chars long!"}, headers=H)
+    r = u.post("/api/auth/register", json={"name": "Walk-in", "email": "walkin@example.com", "password": "ten chars long!"}, headers=H)
     assert r.status_code == 200 and r.json()["pending"] is True and r.json()["user"] is None
-    r = u.post("/api/auth/login", json={"email": "walkin@example.com", "password": "ten chars long!"}, headers=H)
+    r = u.post("/api/auth/login", json={"name": "Walk-in", "email": "walkin@example.com", "password": "ten chars long!"}, headers=H)
     assert r.status_code == 401 and "approval" in r.json()["detail"]
     pending = next(x for x in a.get("/api/users").json() if x["email"] == "walkin@example.com")
     assert pending["approved"] is False and a.get("/api/overview").json()["pendingUsers"] == 1
     a.patch(f"/api/users/{pending['id']}", json={"approved": True}, headers=H)
-    assert u.post("/api/auth/login", json={"email": "walkin@example.com", "password": "ten chars long!"}, headers=H).status_code == 200
+    assert u.post("/api/auth/login", json={"name": "Walk-in", "email": "walkin@example.com", "password": "ten chars long!"}, headers=H).status_code == 200
     a.delete(f"/api/users/{pending['id']}", headers=H)
     assert u.get("/api/auth/me").json()["user"] is None
     a.put("/api/server", json={"registration": "invite"}, headers=H)
@@ -173,3 +175,22 @@ def test_mcp_tokens_follow_the_client_scope(admin):
     assert r.status_code == 401
     assert a.delete(f"/v1/mcp-tokens/{t_own['id']}", headers={"Authorization": f"Bearer {own['key']}"}).json()["ok"] is True
     assert _mcp_call.__name__ and a.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, headers={"Authorization": f"Bearer {t_own['token']}", "Accept": "application/json, text/event-stream"}).status_code == 401
+
+
+def test_browser_recording_and_account_name(admin):
+    a = admin
+    assert a.get("/api/auth/me").json()["user"]["name"] == "Dylan"
+    assert a.patch("/api/account", json={"name": "Dylan K."}, headers=H).json()["name"] == "Dylan K."
+    meta = {"id": "browser-rec-000001", "startedAt": time.time(), "durationSec": 1.5, "format": "wav", "title": "From the browser"}
+    r = a.post("/api/record", data={"meta": json.dumps(meta)}, files={"audio": ("rec.wav", _wav(), "audio/wav")}, headers=H)
+    assert r.status_code == 200, r.text
+    for _ in range(100):
+        if a.get("/api/meetings/browser-rec-000001").json()["meeting"]["status"] in ("ready", "failed"):
+            break
+        time.sleep(0.1)
+    d = a.get("/api/meetings/browser-rec-000001").json()
+    assert d["meeting"]["status"] == "ready" and d["meeting"]["title"] == "From the browser"
+    browser = next(c for c in a.get("/api/clients").json() if c["kind"] == "browser")
+    assert browser["meetingCount"] >= 1 and browser["key"] is None
+    tools = a.get("/api/mcp/tools").json()
+    assert any(t["name"] == "search_transcripts" for t in tools)

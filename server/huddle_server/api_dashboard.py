@@ -3,9 +3,9 @@ approval, accounts, clients and their scopes, MCP tokens, and the meetings an ac
 Admin-only paths are listed in app.ADMIN_PATHS; the rest checks ownership per record."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from huddle_engine.services import meetings as ms
 from huddle_engine.services import search as search_svc
@@ -56,10 +56,21 @@ class Credentials(BaseModel):
     password: str
 
 
+class Account(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
 class Registration(BaseModel):
+    name: str
     email: str
     password: str
     invite: str | None = None
+
+
+class NameOnly(BaseModel):
+    name: str
 
 
 class Code(BaseModel):
@@ -117,12 +128,12 @@ def setup_state(request: Request):
 
 
 @router.post("/setup")
-def setup(request: Request, response: Response, body: Credentials):
+def setup(request: Request, response: Response, body: Account):
     db = request.app.state.db
     if auth.user_count(db) > 0:
         raise HTTPException(403, "The server already has an account")
     try:
-        user = auth.create_user(db, body.email, body.password, role="admin")
+        user = auth.create_user(db, body.email, body.password, role="admin", name=body.name)
     except auth.AuthError as e:
         raise HTTPException(400, str(e)) from None
     s = auth.create_session(db, user, request.app.state.cfg.session_hours, request.headers.get("user-agent"))
@@ -159,7 +170,7 @@ def register(request: Request, response: Response, body: Registration):
     if auth.user_count(db) == 0:
         raise HTTPException(403, "Create the admin account first")
     try:
-        user = auth.register(db, body.email, body.password, body.invite, _registration(db) == "open", _addr(request))
+        user = auth.register(db, body.email, body.password, body.invite, _registration(db) == "open", _addr(request), name=body.name)
     except auth.AuthError as e:
         raise HTTPException(400, str(e)) from None
     if not user.approved:
@@ -358,21 +369,27 @@ def reset_user_password(request: Request, user_id: int, body: NewPassword):
 
 @router.get("/invites")
 def list_invites(request: Request):
-    return auth.list_invites(request.app.state.db)
-
-
-@router.post("/invites")
-def create_invite(request: Request, body: InviteBody):
-    s = _session(request)
-    inv = auth.create_invite(request.app.state.db, s.user.id, body.email)
-    return {**inv, "url": f"{_public_url(request)}:{request.url.port or ''}".rstrip(":") + f"/join/{inv['token']}"
-            if not request.app.state.cfg.public_url else f"{_dashboard_url(request)}/join/{inv['token']}"}
+    return [_invite_view(request, i) for i in auth.list_invites(request.app.state.db)]
 
 
 def _dashboard_url(request: Request) -> str:
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
     host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
     return f"{proto}://{host}"
+
+
+def _invite_view(request: Request, inv: dict) -> dict:
+    return {**inv, "url": f"{_dashboard_url(request)}/join/{inv['token']}" if inv.get("token") else None}
+
+
+@router.post("/invites")
+def create_invite(request: Request, body: InviteBody):
+    s = _session(request)
+    try:
+        inv = auth.create_invite(request.app.state.db, s.user.id, body.email)
+    except auth.AuthError as e:
+        raise HTTPException(400, str(e)) from None
+    return _invite_view(request, inv)
 
 
 @router.delete("/invites/{invite_id}")
@@ -549,7 +566,42 @@ def cancel_meeting(request: Request, meeting_id: str):
     return {"ok": True}
 
 
+# ---- the dashboard's own recorder ------------------------------------------------ #
+@router.post("/record")
+async def record(request: Request, meta: Annotated[str, Form()], audio: Annotated[UploadFile, File()]):
+    """A recording made in the browser. It belongs to the account's 'Browser' client, so scope and
+    AI settings apply like for any device."""
+    import json
+
+    from .api_client import store_upload
+    s = _session(request)
+    client = clients.browser_client(request.app.state.db, s.user.id)
+    if client.revoked:
+        raise HTTPException(403, "Browser recordings are switched off for this account (the Browser client is revoked)")
+    try:
+        m = json.loads(meta)
+    except ValueError:
+        raise HTTPException(400, "meta must be JSON") from None
+    rid = await store_upload(request, client, m, audio)
+    return {"id": rid}
+
+
+@router.get("/mcp/tools")
+def mcp_tools(request: Request):
+    return request.app.state.mcp_tools
+
+
 # ---- account ------------------------------------------------------------------- #
+@router.patch("/account")
+def update_account(request: Request, body: NameOnly):
+    s = _session(request)
+    try:
+        auth.set_name(request.app.state.db, s.user.id, body.name)
+    except auth.AuthError as e:
+        raise HTTPException(400, str(e)) from None
+    return auth.get_user(request.app.state.db, s.user.id).public()
+
+
 @router.post("/account/password")
 def change_password(request: Request, response: Response, body: Password):
     s = _session(request)

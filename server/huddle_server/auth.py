@@ -35,13 +35,14 @@ class User:
     created_at: float
     role: str = "user"
     approved: bool = True
+    name: str = ""
 
     @property
     def is_admin(self) -> bool:
         return self.role == "admin"
 
     def public(self) -> dict:
-        return {"id": self.id, "email": self.email, "totpEnabled": self.totp_enabled, "role": self.role,
+        return {"id": self.id, "email": self.email, "name": self.name, "totpEnabled": self.totp_enabled, "role": self.role,
                 "approved": self.approved, "createdAt": self.created_at}
 
 
@@ -79,7 +80,7 @@ throttle = Throttle()
 
 def _user(r) -> User:
     return User(id=r["id"], email=r["email"], totp_enabled=bool(r["totp_enabled"]), created_at=r["created_at"],
-                role=r["role"] if r["role"] in ROLES else "user", approved=bool(r["approved"]))
+                role=r["role"] if r["role"] in ROLES else "user", approved=bool(r["approved"]), name=r["name"] or "")
 
 
 def user_count(db: ServerDB) -> int:
@@ -95,17 +96,35 @@ def get_user(db: ServerDB, user_id: int) -> User | None:
     return _user(r) if r else None
 
 
-def create_user(db: ServerDB, email: str, password: str, role: str = "user", approved: bool = True) -> User:
+EMAIL_RE = __import__("re").compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
+
+
+def valid_email(email: str) -> bool:
+    e = (email or "").strip().lower()
+    return 5 <= len(e) <= 254 and bool(EMAIL_RE.match(e))
+
+
+def create_user(db: ServerDB, email: str, password: str, role: str = "user", approved: bool = True, name: str = "") -> User:
     email = email.strip().lower()
-    if "@" not in email or len(email) < 5 or len(email) > 254:
+    if not valid_email(email):
         raise AuthError("Enter a valid e-mail address.")
+    name = " ".join((name or "").split())[:80]
+    if not name:
+        raise AuthError("Enter a name.")
     if len(password) < 10:
         raise AuthError("Use a password of at least 10 characters.")
     if db.one("SELECT 1 FROM users WHERE email = ?", (email,)):
         raise AuthError("An account with this e-mail address exists.")
-    cur = db.execute("INSERT INTO users(email, password_hash, created_at, role, approved) VALUES (?,?,?,?,?)",
-                     (email, _ph.hash(password), time.time(), role if role in ROLES else "user", 1 if approved else 0))
+    cur = db.execute("INSERT INTO users(email, password_hash, created_at, role, approved, name) VALUES (?,?,?,?,?,?)",
+                     (email, _ph.hash(password), time.time(), role if role in ROLES else "user", 1 if approved else 0, name))
     return _user(db.one("SELECT * FROM users WHERE id = ?", (cur.lastrowid,)))
+
+
+def set_name(db: ServerDB, user_id: int, name: str) -> None:
+    name = " ".join((name or "").split())[:80]
+    if not name:
+        raise AuthError("Enter a name.")
+    db.execute("UPDATE users SET name = ? WHERE id = ?", (name, user_id))
 
 
 def set_role(db: ServerDB, user_id: int, role: str) -> None:
@@ -141,16 +160,21 @@ def _hash(t: str) -> str:
 
 
 def create_invite(db: ServerDB, created_by: int, email: str | None = None) -> dict:
+    email = (email or "").strip().lower() or None
+    if email and not valid_email(email):
+        raise AuthError("Enter a valid e-mail address.")
     token = secrets.token_urlsafe(24)
     now = time.time()
-    cur = db.execute("INSERT INTO invites(token_hash, prefix, email, created_by, created_at, expires_at) VALUES (?,?,?,?,?,?)",
-                     (_hash(token), token[:6], (email or "").strip().lower() or None, created_by, now, now + INVITE_DAYS * 86400))
+    cur = db.execute("INSERT INTO invites(token_hash, prefix, email, created_by, created_at, expires_at, token) VALUES (?,?,?,?,?,?,?)",
+                     (_hash(token), token[:6], email, created_by, now, now + INVITE_DAYS * 86400, token))
     return {"id": cur.lastrowid, "token": token, "email": email, "expiresAt": now + INVITE_DAYS * 86400}
 
 
 def list_invites(db: ServerDB) -> list[dict]:
+    """Open invitations keep their token so the link can be copied again; used ones drop it."""
     return [{"id": r["id"], "prefix": r["prefix"], "email": r["email"], "createdAt": r["created_at"], "expiresAt": r["expires_at"],
-             "used": bool(r["used_at"]), "expired": r["expires_at"] < time.time() and not r["used_at"]}
+             "used": bool(r["used_at"]), "expired": r["expires_at"] < time.time() and not r["used_at"],
+             "token": r["token"] if not r["used_at"] and r["expires_at"] >= time.time() else None}
             for r in db.query("SELECT * FROM invites ORDER BY created_at DESC")]
 
 
@@ -163,7 +187,8 @@ def check_invite(db: ServerDB, token: str) -> dict | None:
     return {"id": r["id"], "email": r["email"]} if r else None
 
 
-def register(db: ServerDB, email: str, password: str, invite_token: str | None, open_registration: bool, address: str = "") -> User:
+def register(db: ServerDB, email: str, password: str, invite_token: str | None, open_registration: bool, address: str = "",
+             name: str = "") -> User:
     """New account through an invite link (approved at once) or open registration (waits for an admin)."""
     throttle.check(f"register:{address}")
     throttle.hit(f"register:{address}")
@@ -174,9 +199,9 @@ def register(db: ServerDB, email: str, password: str, invite_token: str | None, 
         raise AuthError("This invitation was made for another e-mail address.")
     if not inv and not open_registration:
         raise AuthError("Registration is by invitation only.")
-    user = create_user(db, email, password, role="user", approved=bool(inv))
+    user = create_user(db, email, password, role="user", approved=bool(inv), name=name)
     if inv:
-        db.execute("UPDATE invites SET used_at = ?, used_by = ? WHERE id = ?", (time.time(), user.id, inv["id"]))
+        db.execute("UPDATE invites SET used_at = ?, used_by = ?, token = NULL WHERE id = ?", (time.time(), user.id, inv["id"]))
     return user
 
 
@@ -223,7 +248,7 @@ def create_session(db: ServerDB, user: User, hours: int, user_agent: str | None 
 def get_session(db: ServerDB, sid: str | None, hours: int) -> Session | None:
     if not sid:
         return None
-    r = db.one("SELECT s.*, u.email, u.totp_enabled, u.created_at AS u_created, u.role, u.approved FROM sessions s"
+    r = db.one("SELECT s.*, u.email, u.name, u.totp_enabled, u.created_at AS u_created, u.role, u.approved FROM sessions s"
                " JOIN users u ON u.id = s.user_id WHERE s.id = ?", (sid,))
     now = time.time()
     if not r or r["expires_at"] < now or not r["approved"]:
@@ -233,7 +258,7 @@ def get_session(db: ServerDB, sid: str | None, hours: int) -> Session | None:
     if now - r["last_seen"] > 60:   # sliding expiry, written at most once a minute
         db.execute("UPDATE sessions SET last_seen = ?, expires_at = ? WHERE id = ?", (now, now + hours * 3600, sid))
     user = User(id=r["user_id"], email=r["email"], totp_enabled=bool(r["totp_enabled"]), created_at=r["u_created"],
-                role=r["role"] if r["role"] in ROLES else "user", approved=True)
+                role=r["role"] if r["role"] in ROLES else "user", approved=True, name=r["name"] or "")
     return Session(id=sid, user=user, totp_ok=bool(r["totp_ok"]), expires_at=r["expires_at"])
 
 

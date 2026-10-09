@@ -17,7 +17,7 @@ def _wav_bytes(seconds=2.0):
 def test_setup_then_login_flow(admin):
     c = admin
     assert c.get("/api/setup").json()["needsSetup"] is False
-    assert c.post("/api/setup", json={"email": "x@example.com", "password": "another password"}, headers={"X-Requested-With": "huddle"}).status_code == 403
+    assert c.post("/api/setup", json={"name": "X", "email": "x@example.com", "password": "another password"}, headers={"X-Requested-With": "huddle"}).status_code == 403
     me = c.get("/api/auth/me").json()
     assert me["user"]["email"] == "dylan@example.com" and me["user"]["role"] == "admin" and me["totpRequired"] is False
     assert me["canSeeAll"] is True and me["registration"] == "invite"

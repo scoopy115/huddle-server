@@ -52,7 +52,7 @@ export function Users({ meId }: { meId: number }) {
           <h3 className="mb-2 mt-6 font-display text-[11.5px] font-bold uppercase tracking-wider text-muted">Waiting for approval</h3>
           <Card>
             {pending.map((u) => (
-              <Row key={u.id} label={u.email} hint={`requested ${fmtDate(u.createdAt)}`}>
+              <Row key={u.id} label={u.name || u.email} hint={`${u.email} · requested ${fmtDate(u.createdAt)}`.replace(" · ", " — ")}>
                 <Button size="sm" variant="primary" onClick={() => act(() => api.patchUser(u.id, { approved: true }))}><Check className="h-3.5 w-3.5" /> Approve</Button>
                 <Button size="sm" variant="ghost" onClick={() => act(() => api.deleteUser(u.id))}>Reject</Button>
               </Row>
@@ -64,7 +64,7 @@ export function Users({ meId }: { meId: number }) {
       <h3 className="mb-2 mt-6 font-display text-[11.5px] font-bold uppercase tracking-wider text-muted">Accounts</h3>
       <Card>
         {active.map((u) => (
-          <Row key={u.id} label={u.email} hintNode={<span className="flex flex-wrap gap-3"><span className="inline-flex items-center gap-1"><KeyRound className="h-3 w-3" />{u.clientCount ?? 0} client{u.clientCount === 1 ? "" : "s"}</span><span className="inline-flex items-center gap-1"><ShieldCheck className="h-3 w-3" />{u.totpEnabled ? "2FA on" : "2FA off"}</span><span className="inline-flex items-center gap-1"><Calendar className="h-3 w-3" />since {fmtDate(u.createdAt)}</span></span>}>
+          <Row key={u.id} label={u.name || u.email} hintNode={<span className="flex flex-wrap gap-3"><span>{u.email}</span><span className="inline-flex items-center gap-1"><KeyRound className="h-3 w-3" />{u.clientCount ?? 0} client{u.clientCount === 1 ? "" : "s"}</span><span className="inline-flex items-center gap-1"><ShieldCheck className="h-3 w-3" />{u.totpEnabled ? "2FA on" : "2FA off"}</span><span className="inline-flex items-center gap-1"><Calendar className="h-3 w-3" />since {fmtDate(u.createdAt)}</span></span>}>
             {u.id === meId ? <Badge tone="accent"><Shield className="h-3 w-3" /> Admin (you)</Badge> : (
               <Select value={u.role} onChange={(e) => act(() => api.patchUser(u.id, { role: e.target.value as "admin" | "user" }))}>
                 <option value="user">User</option><option value="admin">Admin</option>
@@ -81,6 +81,7 @@ export function Users({ meId }: { meId: number }) {
         {invites.map((i) => (
           <Row key={i.id} label={i.email ?? "Anyone with the link"} hint={i.used ? "Used" : i.expired ? "Expired" : `valid until ${fmtDate(i.expiresAt)}`}>
             {i.used ? <Badge tone="good">Used</Badge> : i.expired ? <Badge tone="bad">Expired</Badge> : <Badge>Open</Badge>}
+            {i.url && <Button size="sm" variant="ghost" title="Copy the link" onClick={() => copy(i.url!)}>{copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}</Button>}
             <Button size="sm" variant="ghost" onClick={() => setDeletingInvite(i)}><Trash2 className="h-3.5 w-3.5" /></Button>
           </Row>
         ))}
@@ -98,7 +99,7 @@ export function Users({ meId }: { meId: number }) {
         <div className="relative"><pre className="selectable overflow-x-auto rounded-lg border border-border bg-fg/[0.03] p-3 pr-10 font-mono text-[12px] break-all whitespace-pre-wrap">{fresh?.url}</pre><Button size="sm" variant="ghost" className="absolute right-1.5 top-1.5" onClick={() => fresh?.url && copy(fresh.url)}>{copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}</Button></div>
       </Dialog>
 
-      <Dialog open={!!resetting} onClose={() => setResetting(null)} title={`New password for ${resetting?.email}`}
+      <Dialog open={!!resetting} onClose={() => setResetting(null)} title={`New password for ${resetting?.name || resetting?.email}`}
         footer={<><Button variant="ghost" onClick={() => setResetting(null)}>Cancel</Button><Button variant="primary" disabled={newPw.length < 10 || newPw !== newPw2} onClick={() => act(async () => { if (resetting) await api.resetUserPassword(resetting.id, newPw); setResetting(null); })}>Set password</Button></>}>
         <Input autoFocus type="password" placeholder="At least 10 characters" autoComplete="new-password" value={newPw} onChange={(e) => setNewPw(e.target.value)} />
         <Input className="mt-2" type="password" placeholder="Repeat password" autoComplete="new-password" value={newPw2} onChange={(e) => setNewPw2(e.target.value)} />
@@ -111,7 +112,7 @@ export function Users({ meId }: { meId: number }) {
 
       <DangerDialog open={!!deleting} onClose={() => setDeleting(null)} title="Delete this account?" confirmLabel="Delete account" seconds={3}
         onConfirm={() => act(async () => { if (deleting) await api.deleteUser(deleting.id); setDeleting(null); })}>
-        {deleting?.email} loses access, together with their clients and MCP tokens. Recordings stay on the server.
+        {deleting?.name || deleting?.email} loses access, together with their clients and MCP tokens. Recordings stay on the server.
       </DangerDialog>
     </>
   );

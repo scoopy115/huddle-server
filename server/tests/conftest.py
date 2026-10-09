@@ -57,6 +57,6 @@ def client(fake_stages):
 @pytest.fixture(scope="session")
 def admin(client):
     """A logged-in dashboard session (cookie kept by the TestClient)."""
-    r = client.post("/api/setup", json={"email": "dylan@example.com", "password": "correct horse battery"}, headers={"X-Requested-With": "huddle"})
+    r = client.post("/api/setup", json={"name": "Dylan", "email": "dylan@example.com", "password": "correct horse battery"}, headers={"X-Requested-With": "huddle"})
     assert r.status_code == 200, r.text
     return client

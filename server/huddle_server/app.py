@@ -74,6 +74,7 @@ def create_app(cfg: ServerConfig | None = None) -> FastAPI:
                                                  transport_security=_transport_security())
             mcp_app.add_middleware(_McpAuth, db=app.state.db)
             mcp["app"] = mcp_app
+            app.state.mcp_tools = [{"name": t.name, "description": (t.description or "").split("\n")[0]} for t in await server.list_tools()]
             async with server.session_manager.run():
                 stop = threading.Event()
                 threading.Thread(target=_housekeeping, args=(app, stop), name="huddle-server-housekeeping", daemon=True).start()

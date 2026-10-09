@@ -70,12 +70,19 @@ def _job_view(meeting_id: str) -> dict[str, Any]:
 
 @router.post("/recordings")
 async def upload(request: Request, client: ClientDep, meta: Annotated[str, Form()], audio: Annotated[UploadFile, File()]):
-    c = engine_ctx()
-    sdb = request.app.state.db
     try:
         m = json.loads(meta)
     except ValueError:
         raise HTTPException(400, "meta must be JSON") from None
+    rid = await store_upload(request, client, m, audio)
+    return _job_view(rid)
+
+
+async def store_upload(request: Request, client: Client, m: dict, audio: UploadFile) -> str:
+    """Save an uploaded recording for `client`, create the meeting and start processing. Shared by
+    the client API and the dashboard's own recorder."""
+    c = engine_ctx()
+    sdb = request.app.state.db
     rid = str(m.get("id") or "")
     if not ID_RE.match(rid):
         raise HTTPException(400, "Invalid recording id")
@@ -122,7 +129,7 @@ async def upload(request: Request, client: ClientDep, meta: Annotated[str, Form(
         ms.update_meeting(c.db, rid, context_html=str(m["context"])[:20000])
     clients.record_upload(sdb, client.id, rid, size)
     enqueue_for(client, rid)
-    return _job_view(rid)
+    return rid
 
 
 def enqueue_for(client: Client, rid: str) -> None:

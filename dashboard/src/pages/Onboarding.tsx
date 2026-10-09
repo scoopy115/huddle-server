@@ -1,48 +1,21 @@
-import type React from "react";
 import { useCallback, useEffect, useState } from "react";
-import { Check, Download, Mic, Sparkles, Users } from "lucide-react";
+import { Check, Download, Mic, Sparkles, Star, Users } from "lucide-react";
 import { api, errorMessage, type SpeakerModels } from "@/lib/api";
 import type { DownloadCandidate, DownloadProgress, Environment } from "@/types/engine";
 import { fmtBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { Badge, Button, Card, Spinner } from "@/components/ui";
+import { Badge, Button, Card, Input, Spinner } from "@/components/ui";
 import { Wordmark } from "@/components/Wordmark";
+import { purposeOf } from "@/pages/Models";
 
-function Step({ n, icon, title, done, children }: { n: number; icon: React.ReactNode; title: string; done: boolean; children: React.ReactNode }) {
-  return (
-    <Card className="p-4">
-      <div className="mb-2 flex items-center gap-2.5">
-        <span className={cn("flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold", done ? "bg-emerald-500 text-white" : "bg-ink text-ink-fg")}>{done ? <Check className="h-3.5 w-3.5" /> : n}</span>
-        <span className="text-muted">{icon}</span>
-        <span className="text-[14px] font-semibold">{title}</span>
-      </div>
-      <div className="ml-[34px]">{children}</div>
-    </Card>
-  );
-}
-
-function Candidate({ c, downloads, onStart }: { c: DownloadCandidate; downloads: DownloadProgress[]; onStart: (id: string) => void }) {
-  const p = downloads.find((d) => d.id === c.id);
-  const active = p && (p.state === "downloading" || p.state === "verifying");
-  const pct = p && p.totalBytes ? Math.round((p.receivedBytes / p.totalBytes) * 100) : 0;
-  return (
-    <div className="flex items-center gap-3">
-      <div className="min-w-0 flex-1 text-[13px]">{c.name} <span className="text-muted">· {fmtBytes(c.sizeBytes)}</span>
-        {active && <div className="mt-1.5 h-1 w-full overflow-hidden rounded bg-fg/10"><div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} /></div>}
-        {p?.state === "failed" && <div className="mt-1 text-[12px] text-danger">{p.error}</div>}
-      </div>
-      {active ? <span className="text-[12px] text-muted">{p.state === "verifying" ? "Finishing…" : `${pct}%`}</span>
-        : <Button size="sm" variant="primary" onClick={() => onStart(c.id)}><Download className="h-3.5 w-3.5" /> Download</Button>}
-    </div>
-  );
-}
-
-/** First run: the three things a server needs before it can process a recording. */
+/** First run, one step per screen: transcription model, speaker separation, AI model (optional). */
 export function Onboarding({ onDone }: { onDone: () => void }) {
+  const [step, setStep] = useState(0);
   const [env, setEnv] = useState<Environment | null>(null);
   const [cands, setCands] = useState<DownloadCandidate[]>([]);
   const [downloads, setDownloads] = useState<DownloadProgress[]>([]);
   const [speakers, setSpeakers] = useState<SpeakerModels | null>(null);
+  const [custom, setCustom] = useState("");
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
     try {
@@ -54,7 +27,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     const t = setInterval(async () => {
       const [d, sp] = await Promise.all([api.downloads().catch(() => [] as DownloadProgress[]), api.speakerModels().catch(() => null)]);
-      setDownloads((prev) => { if (prev.some((p) => p.state === "downloading") && d.some((x) => x.state === "done")) load(); return d; });
+      setDownloads((prev) => { if (prev.some((p) => p.state === "downloading" || p.state === "verifying") && d.some((x) => x.state === "done")) load(); return d; });
       if (sp) setSpeakers(sp);
     }, 1000);
     return () => clearInterval(t);
@@ -62,44 +35,100 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   if (error) return <div className="p-6 text-danger">{error}</div>;
   if (!env || !speakers) return <div className="flex h-full items-center justify-center"><Spinner /></div>;
 
-  const installed = (task: "transcription" | "llm") => env.models.find((m) => m.task === task && m.compatible && (task !== "llm" || m.source === "ollama"));
-  const pick = (task: "transcription" | "llm") => cands.filter((c) => c.task === task && (task !== "transcription" || !c.id.includes("mlx") || env.hardware.appleSilicon))
-    .sort((a, b) => Number(b.recommended) - Number(a.recommended))[0];
+  const installedList = (task: "transcription" | "llm") => env.models.filter((m) => m.task === task && m.compatible && (task !== "llm" || m.source === "ollama"));
+  const candsFor = (task: "transcription" | "llm") => cands.filter((c) => c.task === task && (task !== "transcription" || !c.id.includes("mlx") || env.hardware.appleSilicon))
+    .sort((a, b) => Number(b.recommended) - Number(a.recommended));
+  const isInstalled = (c: DownloadCandidate) => c.task === "llm" ? env.models.some((m) => m.source === "ollama" && m.name === c.url)
+    : env.models.some((m) => m.task === "transcription" && m.source === "our_app" && m.id === `our_app:${c.url}`);
   const ollama = env.providers.find((p) => p.id === "ollama")?.status === "available";
-  const transcriptionReady = !!installed("transcription");
   const start = (id: string) => api.startDownload(id).then(() => api.downloads().then(setDownloads)).catch((e) => setError(errorMessage(e)));
+  const done = [installedList("transcription").length > 0, speakers.installed, installedList("llm").length > 0];
+  const finish = async () => { await api.setOnboarding(true); onDone(); };
 
+  const steps = [
+    { icon: <Mic className="h-4 w-4" />, title: "Transcription model", body: (
+      <>
+        <Marketplace cands={candsFor("transcription")} downloads={downloads} installed={isInstalled} memoryBytes={env.hardware.memoryBytes} onStart={start} />
+      </>
+    ) },
+    { icon: <Users className="h-4 w-4" />, title: "Speaker separation", body: (
+      <Card>
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] font-medium">pyannote segmentation 3.0 and TitaNet</div>
+            <div className="text-[12px] text-muted">Who spoke when, and voice embeddings for the clients</div>
+            {speakers.downloading && <div className="mt-1.5 h-1 w-full overflow-hidden rounded bg-fg/10"><div className="h-full bg-accent transition-all" style={{ width: `${Math.round(speakers.progress * 100)}%` }} /></div>}
+            {speakers.error && <div className="mt-1 text-[12px] text-danger">{speakers.error}</div>}
+          </div>
+          {speakers.installed ? <Badge tone="good"><Check className="h-3 w-3" /> Installed</Badge>
+            : speakers.downloading ? <span className="text-[12px] text-muted">{Math.round(speakers.progress * 100)}%</span>
+            : <Button size="sm" variant="primary" onClick={() => api.downloadSpeakerModels().then(setSpeakers)}><Download className="h-3.5 w-3.5" /> Install</Button>}
+        </div>
+      </Card>
+    ) },
+    { icon: <Sparkles className="h-4 w-4" />, title: "AI model for notes", body: (
+      <>
+        {!ollama && <div className="mb-3 flex items-center gap-2 text-[13px] text-muted"><Badge tone="warn">Ollama not reachable</Badge> Start the ollama container, then come back.</div>}
+        <Marketplace cands={candsFor("llm")} downloads={downloads} installed={isInstalled} memoryBytes={env.hardware.memoryBytes} onStart={start} />
+        <div className="mt-3 flex items-center gap-2">
+          <Input placeholder="Any model from the Ollama library, e.g. llama3.1:8b" value={custom} onChange={(e) => setCustom(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && custom.trim()) { start(`ollama:${custom.trim()}`); setCustom(""); } }} />
+          <Button disabled={!custom.trim() || !ollama} onClick={() => { start(`ollama:${custom.trim()}`); setCustom(""); }}><Download className="h-3.5 w-3.5" /> Pull</Button>
+        </div>
+        <p className="mt-2 text-[12px] text-muted">Optional. Without a model the server returns transcripts and speakers; the Huddle app writes the notes itself.</p>
+      </>
+    ) },
+  ];
+  const s = steps[step];
   return (
-    <div className="mx-auto max-w-[620px] px-6 py-10">
+    <div className="mx-auto max-w-[680px] px-6 py-10">
       <Wordmark className="mb-6 h-7 w-auto" />
-      <h1 className="mb-1 font-display text-[22px] font-bold tracking-tight">Set up the server</h1>
-      <p className="mb-5 text-[13px] text-muted">Three downloads, then the server can process recordings.</p>
-      <div className="flex flex-col gap-3">
-        <Step n={1} icon={<Mic className="h-4 w-4" />} title="Transcription model" done={transcriptionReady}>
-          {transcriptionReady ? <div className="text-[13px] text-muted">{installed("transcription")!.name}</div> : pick("transcription") ? <Candidate c={pick("transcription")!} downloads={downloads} onStart={start} /> : <div className="text-[13px] text-muted">No model available for this platform.</div>}
-        </Step>
-        <Step n={2} icon={<Users className="h-4 w-4" />} title="Speaker separation" done={speakers.installed}>
-          {speakers.installed ? <div className="text-[13px] text-muted">Installed</div> : (
-            <div className="flex items-center gap-3">
-              <div className="min-w-0 flex-1 text-[13px]">Segmentation and voice models <span className="text-muted">· 110 MB</span>
-                {speakers.downloading && <div className="mt-1.5 h-1 w-full overflow-hidden rounded bg-fg/10"><div className="h-full bg-accent transition-all" style={{ width: `${Math.round(speakers.progress * 100)}%` }} /></div>}
-                {speakers.error && <div className="mt-1 text-[12px] text-danger">{speakers.error}</div>}
-              </div>
-              {speakers.downloading ? <span className="text-[12px] text-muted">{Math.round(speakers.progress * 100)}%</span>
-                : <Button size="sm" variant="primary" onClick={() => api.downloadSpeakerModels().then(setSpeakers)}><Download className="h-3.5 w-3.5" /> Download</Button>}
-            </div>
-          )}
-        </Step>
-        <Step n={3} icon={<Sparkles className="h-4 w-4" />} title="AI model for notes" done={!!installed("llm")}>
-          {installed("llm") ? <div className="text-[13px] text-muted">{installed("llm")!.name}</div>
-            : !ollama ? <div className="flex items-center gap-2 text-[13px] text-muted"><Badge tone="warn">Ollama not reachable</Badge> Start the ollama container, then come back.</div>
-            : pick("llm") ? <><Candidate c={pick("llm")!} downloads={downloads} onStart={start} /><div className="mt-2 text-[12px] text-muted">Optional. Without it the server returns transcripts and the Huddle app writes the notes.</div></> : null}
-        </Step>
+      <div className="mb-5 flex items-center gap-2">
+        {steps.map((x, i) => (
+          <button key={x.title} onClick={() => setStep(i)} className={cn("flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12.5px]", i === step ? "border-accent bg-accent-soft text-accent" : "border-border text-muted hover:text-fg")}>
+            <span className={cn("flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold", done[i] ? "bg-emerald-500 text-white" : i === step ? "bg-accent text-white" : "bg-fg/10")}>{done[i] ? <Check className="h-3 w-3" /> : i + 1}</span>{x.title}
+          </button>
+        ))}
       </div>
-      <div className="mt-5 flex items-center gap-3">
-        <Button variant="primary" size="lg" disabled={!transcriptionReady || !speakers.installed} onClick={async () => { await api.setOnboarding(true); onDone(); }}>Open the dashboard</Button>
-        <button className="text-[12.5px] text-muted hover:text-fg" onClick={async () => { await api.setOnboarding(true); onDone(); }}>Skip for now</button>
+      <h1 className="mb-1 flex items-center gap-2 font-display text-[22px] font-bold tracking-tight"><span className="text-muted">{s.icon}</span>{s.title}</h1>
+      <p className="mb-4 text-[13px] text-muted">{step === 0 ? "Pick one. Larger models are more accurate and slower." : step === 1 ? "Needed to tell speakers apart." : "Writes the summary, questions and action items."}</p>
+      {s.body}
+      <div className="mt-6 flex items-center gap-3">
+        {step > 0 && <Button variant="ghost" onClick={() => setStep(step - 1)}>Back</Button>}
+        <div className="flex-1" />
+        {step < 2 ? <Button variant="primary" size="lg" disabled={!done[step]} onClick={() => setStep(step + 1)}>Next</Button>
+          : <Button variant="primary" size="lg" onClick={finish}>Open the dashboard</Button>}
+        <button className="text-[12.5px] text-muted hover:text-fg" onClick={finish}>Skip for now</button>
       </div>
     </div>
   );
 }
+
+function Marketplace({ cands, downloads, installed, memoryBytes, onStart }: { cands: DownloadCandidate[]; downloads: DownloadProgress[]; installed: (c: DownloadCandidate) => boolean; memoryBytes: number | null; onStart: (id: string) => void }) {
+  return (
+    <Card>
+      {cands.map((c) => {
+        const p = downloads.find((d) => d.id === c.id);
+        const active = p && (p.state === "downloading" || p.state === "verifying");
+        const pct = p && p.totalBytes ? Math.round((p.receivedBytes / p.totalBytes) * 100) : 0;
+        const tooBig = !!c.minMemoryBytes && !!memoryBytes && memoryBytes < c.minMemoryBytes;
+        const has = installed(c);
+        return (
+          <div key={c.id} className={cn("flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0", tooBig && !has && "opacity-50")}>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 text-[13px] font-medium">{c.name}{c.recommended && <Badge tone="accent"><Star className="h-3 w-3" /> Recommended</Badge>}</div>
+              <div className="flex flex-wrap gap-x-3 text-[12px] text-muted"><span>{purposeOf(c)}</span><span className="inline-flex items-center gap-1"><Download className="h-3 w-3" />{c.sizeBytes ? fmtBytes(c.sizeBytes) : "size varies"}</span></div>
+              {tooBig && !has && <div className="text-[12px] text-danger">Needs {fmtBytes(c.minMemoryBytes!)} of memory.</div>}
+              {active && <div className="mt-1.5 h-1 w-full overflow-hidden rounded bg-fg/10"><div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} /></div>}
+              {p?.state === "failed" && <div className="mt-1 text-[12px] text-danger">{p.error}</div>}
+            </div>
+            {has ? <Badge tone="good"><Check className="h-3 w-3" /> Installed</Badge>
+              : active ? <span className="text-[12px] text-muted">{p.state === "verifying" ? "Finishing…" : `${pct}%`}</span>
+              : <Button size="sm" variant="primary" disabled={tooBig} onClick={() => onStart(c.id)}><Download className="h-3.5 w-3.5" /> Install</Button>}
+          </div>
+        );
+      })}
+      {cands.length === 0 && <div className="px-4 py-3 text-[12.5px] text-muted">Nothing available for this platform.</div>}
+    </Card>
+  );
+}
+

@@ -85,6 +85,13 @@ SCHEMA = [
     -- Whether the server writes AI notes for a client's recordings (an admin decides per client).
     ALTER TABLE clients ADD COLUMN ai_enabled INTEGER NOT NULL DEFAULT 1;
     """),
+    (4, """
+    -- Accounts have a display name; invitation links can be copied again later.
+    ALTER TABLE users ADD COLUMN name TEXT NOT NULL DEFAULT '';
+    ALTER TABLE invites ADD COLUMN token TEXT;
+    -- Clients made by the dashboard's own recorder (one per account) carry kind 'browser'.
+    ALTER TABLE clients ADD COLUMN kind TEXT NOT NULL DEFAULT 'device';
+    """),
 ]
 
 

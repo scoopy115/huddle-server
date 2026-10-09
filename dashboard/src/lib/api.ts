@@ -37,9 +37,9 @@ const del = <T>(p: string) => call<T>("DELETE", p);
 export const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export type Role = "admin" | "user";
-export interface User { id: number; email: string; totpEnabled: boolean; role: Role; approved: boolean; createdAt: number; clientCount?: number }
+export interface User { id: number; email: string; name: string; totpEnabled: boolean; role: Role; approved: boolean; createdAt: number; clientCount?: number }
 export interface Me { user: User | null; totpRequired: boolean; registration: "invite" | "open"; canSeeAll?: boolean }
-export interface Client { id: number; name: string; prefix: string; createdAt: number; lastSeenAt: number | null; lastVersion: string | null; revoked: boolean; userId: number | null; userEmail: string | null; scope: "own" | "all"; aiEnabled: boolean; meetingCount: number; tokenCount: number; key: string | null }
+export interface Client { id: number; name: string; kind: "device" | "browser"; prefix: string; createdAt: number; lastSeenAt: number | null; lastVersion: string | null; revoked: boolean; userId: number | null; userEmail: string | null; scope: "own" | "all"; aiEnabled: boolean; meetingCount: number; tokenCount: number; key: string | null }
 export interface McpToken { id: number; clientId: number; clientName: string; name: string; prefix: string; createdAt: number; expiresAt: number | null; lastUsedAt: number | null; expired: boolean; revoked: boolean; scope: "own" | "all"; token: string | null; url?: string }
 export interface Invite { id: number; prefix: string; email: string | null; createdAt: number; expiresAt: number; used: boolean; expired: boolean; token?: string; url?: string }
 export interface SpeakerModels { installed: boolean; downloading: boolean; progress: number; error: string | null }
@@ -57,9 +57,20 @@ export interface Overview {
 export const api = {
   // server
   setupState: () => get<{ needsSetup: boolean; name: string; registration: "invite" | "open" }>("/api/setup"),
-  setup: (email: string, password: string) => post<Me>("/api/setup", { email, password }),
+  setup: (name: string, email: string, password: string) => post<Me>("/api/setup", { name, email, password }),
   login: (email: string, password: string) => post<Me>("/api/auth/login", { email, password }),
-  register: (email: string, password: string, invite?: string) => post<Me & { pending: boolean }>("/api/auth/register", { email, password, invite }),
+  register: (name: string, email: string, password: string, invite?: string) => post<Me & { pending: boolean }>("/api/auth/register", { name, email, password, invite }),
+  updateAccount: (name: string) => patch<User>("/api/account", { name }),
+  mcpTools: () => get<{ name: string; description: string }[]>("/api/mcp/tools"),
+  record: async (meta: Record<string, unknown>, blob: Blob, filename: string) => {
+    const fd = new FormData();
+    fd.append("meta", JSON.stringify(meta));
+    fd.append("audio", blob, filename);
+    const r = await fetch("/api/record", { method: "POST", body: fd, headers: { "X-Requested-With": "huddle" }, credentials: "same-origin" });
+    const data = await r.json().catch(() => null);
+    if (!r.ok) throw new ApiError(r.status, (data && data.detail) || r.statusText);
+    return data as { id: string };
+  },
   inviteState: (token: string) => get<{ valid: boolean; email: string | null }>(`/api/auth/invite/${encodeURIComponent(token)}`),
   loginTotp: (code: string) => post<Me>("/api/auth/totp", { code }),
   logout: () => post<{ ok: boolean }>("/api/auth/logout"),

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, ChevronDown, Clock, Copy, Eye, HelpCircle, KeyRound, Mic, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Check, ChevronDown, Clock, Copy, Eye, Globe, HelpCircle, KeyRound, Mic, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 import { api, errorMessage, type Client, type McpToken } from "@/lib/api";
 import { fmtDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useCopy } from "@/pages/Overview";
-import { Badge, Button, Card, DangerDialog, Dialog, Input, Row, Select, Switch } from "@/components/ui";
+import { Badge, Button, Card, DangerDialog, Dialog, Input, Row, Select } from "@/components/ui";
 
 export function Clients({ isAdmin }: { isAdmin: boolean }) {
   const [list, setList] = useState<Client[]>([]);
@@ -16,6 +16,7 @@ export function Clients({ isAdmin }: { isAdmin: boolean }) {
   const [deleting, setDeleting] = useState<Client | null>(null);
   const [open, setOpen] = useState<number | null>(null);
   const [explain, setExplain] = useState(false);
+  const [revoking, setRevoking] = useState<Client | null>(null);
   const { copied, copy } = useCopy();
   const load = useCallback(() => api.clients().then(setList).catch((e) => setError(errorMessage(e))), []);
   useEffect(() => { load(); }, [load]);
@@ -38,18 +39,21 @@ export function Clients({ isAdmin }: { isAdmin: boolean }) {
           <Card>
             {items.map((c) => (
               <div key={c.id}>
-                <Row label={c.name} hintNode={<span className="flex flex-wrap gap-3"><span className="inline-flex items-center gap-1 font-mono"><KeyRound className="h-3 w-3" />{c.prefix}…</span><span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{c.lastSeenAt ? `last seen ${fmtDate(c.lastSeenAt)}${c.lastVersion ? ` · Huddle ${c.lastVersion}` : ""}` : "never connected"}</span><span className="inline-flex items-center gap-1"><Mic className="h-3 w-3" />{c.meetingCount} meeting{c.meetingCount === 1 ? "" : "s"}</span><button className="inline-flex items-center gap-1 hover:text-fg" onClick={() => setOpen(open === c.id ? null : c.id)}>{c.tokenCount} MCP token{c.tokenCount === 1 ? "" : "s"} <ChevronDown className={cn("h-3 w-3 transition-transform", open === c.id && "rotate-180")} /></button></span>}>
+                <Row label={c.name} hintNode={<span className="flex flex-wrap gap-3">{c.kind === "browser" ? <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" />Recorder in this dashboard</span> : <span className="inline-flex items-center gap-1 font-mono"><KeyRound className="h-3 w-3" />{c.prefix}…</span>}<span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{c.lastSeenAt ? `last seen ${fmtDate(c.lastSeenAt)}${c.lastVersion ? ` · Huddle ${c.lastVersion}` : ""}` : "never connected"}</span><span className="inline-flex items-center gap-1"><Mic className="h-3 w-3" />{c.meetingCount} meeting{c.meetingCount === 1 ? "" : "s"}</span><button className="inline-flex items-center gap-1 hover:text-fg" onClick={() => setOpen(open === c.id ? null : c.id)}>{c.tokenCount} MCP token{c.tokenCount === 1 ? "" : "s"} <ChevronDown className={cn("h-3 w-3 transition-transform", open === c.id && "rotate-180")} /></button></span>}>
                   {c.revoked ? <Badge tone="bad">Revoked</Badge> : isAdmin ? (
                     <>
-                      <span className="inline-flex items-center gap-1.5 text-[12px] text-muted" title="AI notes for this client's recordings"><Sparkles className="h-3 w-3" /><Switch checked={c.aiEnabled} onChange={(v) => act(() => api.patchClient(c.id, { ai_enabled: v }))} /></span>
-                      <Select value={c.scope} onChange={(e) => act(() => api.patchClient(c.id, { scope: e.target.value as "own" | "all" }))}>
+                      <Select className="!w-[150px]" value={c.aiEnabled ? "on" : "off"} onChange={(e) => act(() => api.patchClient(c.id, { ai_enabled: e.target.value === "on" }))}>
+                        <option value="on">AI notes on</option>
+                        <option value="off">AI notes off</option>
+                      </Select>
+                      <Select className="!w-[170px]" value={c.scope} onChange={(e) => act(() => api.patchClient(c.id, { scope: e.target.value as "own" | "all" }))}>
                         <option value="own">Own recordings</option>
                         <option value="all">All recordings</option>
                       </Select>
                       <button className="text-muted hover:text-fg" title="What do these mean?" onClick={() => setExplain(true)}><HelpCircle className="h-3.5 w-3.5" /></button>
                     </>
-                  ) : <><Badge><Eye className="h-3 w-3" />{c.scope === "all" ? "All recordings" : "Own recordings"}</Badge>{!c.aiEnabled && <Badge tone="neutral">No AI notes</Badge>}</>}
-                  {!c.revoked && <Button size="sm" variant="ghost" onClick={() => act(() => api.revokeClient(c.id))}>Revoke</Button>}
+                  ) : <><Badge><Eye className="h-3 w-3" />{c.scope === "all" ? "All recordings" : "Own recordings"}</Badge><Badge><Sparkles className="h-3 w-3" />{c.aiEnabled ? "AI notes" : "No AI notes"}</Badge></>}
+                  {!c.revoked && <Button size="sm" variant="ghost" onClick={() => setRevoking(c)}>Revoke</Button>}
                   <Button size="sm" variant="ghost" title="Rename" onClick={() => { setName(c.name); setRenaming(c); }}><Pencil className="h-3.5 w-3.5" /></Button>
                   <Button size="sm" variant="ghost" title="Delete" onClick={() => setDeleting(c)}><Trash2 className="h-3.5 w-3.5 text-danger" /></Button>
                 </Row>
@@ -83,6 +87,10 @@ export function Clients({ isAdmin }: { isAdmin: boolean }) {
         <div className="relative"><pre className="selectable overflow-x-auto rounded-lg border border-border bg-fg/[0.03] p-3 pr-10 font-mono text-[12px] break-all whitespace-pre-wrap">{fresh?.key}</pre><Button size="sm" variant="ghost" className="absolute right-1.5 top-1.5" onClick={() => fresh?.key && copy(fresh.key)}>{copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}</Button></div>
         <p className="mt-2 text-[11.5px] text-muted">Open Huddle on that device and connect with this key under Settings → Server.</p>
       </Dialog>
+      <DangerDialog open={!!revoking} onClose={() => setRevoking(null)} title="Revoke this client?" confirmLabel="Revoke" seconds={0}
+        onConfirm={() => act(async () => { if (revoking) await api.revokeClient(revoking.id); setRevoking(null); })}>
+        “{revoking?.name}” and its MCP tokens stop working now. The key cannot be reactivated; make a new one instead.
+      </DangerDialog>
       <DangerDialog open={!!deleting} onClose={() => setDeleting(null)} title="Delete this client?" confirmLabel="Delete client" seconds={3}
         onConfirm={() => act(async () => { if (deleting) await api.deleteClient(deleting.id); setDeleting(null); })}>
         “{deleting?.name}” and its MCP tokens lose access immediately. Recordings it sent stay on the server.

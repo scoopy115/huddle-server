@@ -4,10 +4,10 @@ import { api, errorMessage } from "@/lib/api";
 import type { DownloadCandidate, DownloadProgress, Environment, LocalModel, Resolution, UserSettings } from "@/types/engine";
 import { fmtBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { Badge, Button, Card, DangerDialog, Row, Select, Spinner } from "@/components/ui";
+import { Badge, Button, Card, DangerDialog, Input, Row, Select, Spinner } from "@/components/ui";
 
 /** The engine's candidate copy is written for the desktop app; on a server the platform is a given. */
-const purposeOf = (c: DownloadCandidate) => c.purpose
+export const purposeOf = (c: DownloadCandidate) => c.purpose
   .replace(/ — works on any Mac and on Windows/i, "")
   .replace(/ — fits Macs with (.+?) or more/i, " — needs $1 of memory")
   .replace(/ for older or low-memory Macs/i, " for low-memory servers")
@@ -24,7 +24,7 @@ function CandidateRow({ c, progress, installed, memoryBytes, onStart, onCancel }
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-[13px] font-medium">{c.name}{c.recommended && <Badge tone="accent"><Star className="h-3 w-3" /> Recommended</Badge>}</div>
         <div className="mt-0.5 flex flex-wrap gap-x-3 text-[12px] text-muted"><span>{purposeOf(c)}</span><span className="inline-flex items-center gap-1"><Download className="h-3 w-3" />{c.sizeBytes ? fmtBytes(c.sizeBytes) : "size varies"}</span><span>{c.license}</span></div>
-        {tooBig && !installed && <div className="mt-0.5 text-[12px] text-danger">Needs {fmtBytes(c.minMemoryBytes!)} of memory; this server has {fmtBytes(memoryBytes!)}.</div>}
+        {tooBig && !installed && <div className="mt-0.5 text-[12px] text-danger">Needs {fmtBytes(c.minMemoryBytes!)} of memory.</div>}
         {active && <div className="mt-1.5 h-1 w-full overflow-hidden rounded bg-fg/10"><div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} /></div>}
         {progress?.state === "failed" && <div className="mt-1 text-[12px] text-danger">{progress.error}</div>}
       </div>
@@ -44,6 +44,7 @@ export function Models() {
   const [cands, setCands] = useState<DownloadCandidate[]>([]);
   const [downloads, setDownloads] = useState<DownloadProgress[]>([]);
   const [confirm, setConfirm] = useState<LocalModel | null>(null);
+  const [custom, setCustom] = useState("");
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
     try {
@@ -71,6 +72,8 @@ export function Models() {
     : env.models.some((m) => m.task === "transcription" && m.compatible && m.source === "our_app" && m.id === `our_app:${c.url}`);
   const candsFor = (task: string) => cands.filter((c) => c.task === task && (task !== "transcription" || !c.id.includes("mlx") || env.hardware.appleSilicon)).sort((a, b) => Number(b.recommended) - Number(a.recommended));
 
+  const pull = () => { const n = custom.trim(); if (!n) return; setCustom(""); api.startDownload(`ollama:${n}`).then(() => api.downloads().then(setDownloads)).catch((e) => setError(errorMessage(e))); };
+  const customDownloads = downloads.filter((d) => d.id.startsWith("ollama:") && !cands.some((c) => c.id === d.id));
   const section = (task: "transcription" | "llm", key: "models.whisper" | "models.ai", models: LocalModel[], label: string) => (
     <>
       <h3 className="mb-2 mt-6 font-display text-[11.5px] font-bold uppercase tracking-wider text-muted">{label}</h3>
@@ -94,6 +97,18 @@ export function Models() {
       <Card className="mt-3">
         {candsFor(task).map((c) => <CandidateRow key={c.id} c={c} progress={downloads.find((d) => d.id === c.id)} installed={isInstalled(c)} memoryBytes={env.hardware.memoryBytes}
           onStart={() => api.startDownload(c.id).then(() => api.downloads().then(setDownloads)).catch((e) => setError(errorMessage(e)))} onCancel={() => api.cancelDownload(c.id)} />)}
+        {task === "llm" && customDownloads.map((d) => (
+          <div key={d.id} className="border-b border-border px-4 py-3 text-[13px]">
+            <div className="flex items-center justify-between"><span>{d.candidate.name}</span><span className="text-[12px] text-muted">{d.state === "done" ? "Installed" : d.state === "failed" ? d.error : d.totalBytes ? `${Math.round((d.receivedBytes / d.totalBytes) * 100)}%` : "Pulling…"}</span></div>
+            {(d.state === "downloading" || d.state === "verifying") && <div className="mt-1.5 h-1 w-full overflow-hidden rounded bg-fg/10"><div className="h-full bg-accent transition-all" style={{ width: `${d.totalBytes ? Math.round((d.receivedBytes / d.totalBytes) * 100) : 0}%` }} /></div>}
+          </div>
+        ))}
+        {task === "llm" && (
+          <div className="flex items-center gap-2 border-t border-border px-4 py-3">
+            <Input placeholder="Any model from the Ollama library, e.g. llama3.1:8b" value={custom} onChange={(e) => setCustom(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && custom.trim()) pull(); }} />
+            <Button disabled={!custom.trim() || ollama?.status !== "available"} onClick={pull}><Download className="h-3.5 w-3.5" /> Pull</Button>
+          </div>
+        )}
       </Card>
     </>
   );

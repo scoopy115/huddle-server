@@ -53,7 +53,8 @@ def cmd_user(args) -> int:
     pw = args.password or getpass.getpass("Password (min. 10 characters): ")
     try:
         # the first account is the admin; later ones are users (promote them in the dashboard)
-        u = auth.create_user(db, args.email, pw, role="admin" if auth.user_count(db) == 0 or args.admin else "user")
+        u = auth.create_user(db, args.email, pw, role="admin" if auth.user_count(db) == 0 or args.admin else "user",
+                             name=args.name or args.email.split("@")[0])
     except auth.AuthError as e:
         print(e, file=sys.stderr)
         return 1
@@ -138,7 +139,7 @@ def main(argv=None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     sp = sub.add_parser("serve"); sp.add_argument("--port", type=int); sp.set_defaults(func=cmd_serve)
     sp = sub.add_parser("user"); sp.add_argument("action", choices=["add", "list"]); sp.add_argument("email", nargs="?")
-    sp.add_argument("--password"); sp.add_argument("--admin", action="store_true"); sp.set_defaults(func=cmd_user)
+    sp.add_argument("--password"); sp.add_argument("--name"); sp.add_argument("--admin", action="store_true"); sp.set_defaults(func=cmd_user)
     sp = sub.add_parser("client"); sp.add_argument("action", choices=["add", "list"]); sp.add_argument("name", nargs="?", default="Client")
     sp.set_defaults(func=cmd_client)
     sp = sub.add_parser("models"); sp.add_argument("action", choices=["pull", "list"]); sp.add_argument("candidate", nargs="?")

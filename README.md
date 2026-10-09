@@ -110,9 +110,12 @@ Docker image: `scripts/fetch-engine.sh && docker build -t huddle-server:local .`
 (`HUDDLE_IMAGE=huddle-server:local docker compose up -d`). The GitHub workflow publishes
 `ghcr.io/scoopy115/huddle-server` for amd64 and arm64 on every push to `main` and on `v*` tags.
 
+- **Record in the browser**: the dashboard's Record page records with the microphone of any
+  device (phone, Windows, Linux) and sends the audio to the server. Those recordings belong to the
+  account's "Browser" client, so scope and AI settings apply like for a device.
+
 ## Roadmap
 
-- Recording from the browser (the dashboard as a recorder on any device).
 - iPhone companion that records and sends to the server.
 - CUDA image.
 
