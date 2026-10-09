@@ -11,7 +11,7 @@ RUN npm run build
 FROM python:3.11-slim-bookworm
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
     HUDDLE_DATA_DIR=/data HUDDLE_TLS_DIR=/certs HUDDLE_HOST=0.0.0.0 HUDDLE_PORT=48731 \
-    HF_HOME=/data/hf
+    HF_HOME=/data/hf HF_HUB_DISABLE_TELEMETRY=1 DO_NOT_TRACK=1
 RUN apt-get update && apt-get install -y --no-install-recommends libsndfile1 libgomp1 curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
