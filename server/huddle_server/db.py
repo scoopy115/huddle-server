@@ -46,6 +46,41 @@ SCHEMA = [
     CREATE INDEX idx_uploads_client ON uploads(client_id, created_at);
     CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     """),
+    (2, """
+    -- Accounts get a role and an approval flag (open registration waits for an admin).
+    ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user';
+    ALTER TABLE users ADD COLUMN approved INTEGER NOT NULL DEFAULT 1;
+    UPDATE users SET role = 'admin' WHERE id = (SELECT MIN(id) FROM users);
+    -- A client belongs to an account; its scope says which recordings it (and its MCP tokens) may see.
+    ALTER TABLE clients ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+    ALTER TABLE clients ADD COLUMN scope TEXT NOT NULL DEFAULT 'own';
+    UPDATE clients SET user_id = (SELECT MIN(id) FROM users) WHERE user_id IS NULL;
+    CREATE INDEX idx_clients_user ON clients(user_id);
+    CREATE TABLE invites (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        token_hash  TEXT NOT NULL UNIQUE,
+        prefix      TEXT NOT NULL,
+        email       TEXT,
+        created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at  REAL NOT NULL,
+        expires_at  REAL NOT NULL,
+        used_at     REAL,
+        used_by     INTEGER REFERENCES users(id) ON DELETE SET NULL
+    );
+    -- MCP tokens inherit the scope of the client they were made for.
+    CREATE TABLE mcp_tokens (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_id    INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        name         TEXT NOT NULL,
+        token_hash   TEXT NOT NULL UNIQUE,
+        prefix       TEXT NOT NULL,
+        created_at   REAL NOT NULL,
+        expires_at   REAL,
+        last_used_at REAL,
+        revoked_at   REAL
+    );
+    CREATE INDEX idx_mcp_tokens_client ON mcp_tokens(client_id);
+    """),
 ]
 
 

@@ -17,10 +17,12 @@ services:
       HUDDLE_SYSTEM_LANGUAGE: ${HUDDLE_LANGUAGE:-en}
       HUDDLE_OLLAMA_URL: ${HUDDLE_OLLAMA_URL:-http://ollama:11434}
       HUDDLE_SESSION_HOURS: ${HUDDLE_SESSION_HOURS:-72}
+      HUDDLE_MAX_UPLOAD_MB: ${HUDDLE_MAX_UPLOAD_MB:-2048}
+      HUDDLE_PUBLIC_URL: ${HUDDLE_PUBLIC_URL:-}
     volumes:
       - huddle-data:/data
       - certs:/certs
-    expose: ["48731", "48800"]
+    expose: ["48731"]
 
   caddy:
     image: caddy:2

@@ -21,6 +21,6 @@ COPY server/ /app/server/
 COPY --from=dashboard /dash/dist /app/server/huddle_server/static
 RUN pip install /app/server && rm -rf /app/engine /app/server
 VOLUME ["/data", "/certs"]
-EXPOSE 48731 48800
+EXPOSE 48731
 HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=10 CMD curl -fsS http://127.0.0.1:48731/health || exit 1
 CMD ["huddle-server", "serve"]

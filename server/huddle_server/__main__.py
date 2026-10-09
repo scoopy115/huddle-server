@@ -45,14 +45,15 @@ def _db():
 
 def cmd_user(args) -> int:
     from . import auth
-    cfg, db = _db()
+    _cfg, db = _db()
     if args.action == "list":
         for r in db.query("SELECT email, totp_enabled, created_at FROM users ORDER BY id"):
             print(f"{r['email']:40s} {'2FA' if r['totp_enabled'] else '   '}  {time.strftime('%Y-%m-%d', time.localtime(r['created_at']))}")
         return 0
     pw = args.password or getpass.getpass("Password (min. 10 characters): ")
     try:
-        u = auth.create_user(db, args.email, pw)
+        # the first account is the admin; later ones are users (promote them in the dashboard)
+        u = auth.create_user(db, args.email, pw, role="admin" if auth.user_count(db) == 0 or args.admin else "user")
     except auth.AuthError as e:
         print(e, file=sys.stderr)
         return 1
@@ -62,12 +63,16 @@ def cmd_user(args) -> int:
 
 def cmd_client(args) -> int:
     from . import clients
-    cfg, db = _db()
+    _cfg, db = _db()
     if args.action == "list":
         for c in clients.list_clients(db):
             print(f"{c.id:3d}  {c.name:30s} {c.prefix}…  {'revoked' if c.revoked else ''}")
         return 0
-    c = clients.create(db, args.name)
+    admin = db.one("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1")
+    if not admin:
+        print("Create an account first (huddle-server user add <email>)", file=sys.stderr)
+        return 1
+    c = clients.create(db, args.name, int(admin["id"]))
     print(f"Client key for “{c.name}” (shown once):\n\n  {c.key}\n")
     return 0
 
@@ -133,7 +138,7 @@ def main(argv=None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     sp = sub.add_parser("serve"); sp.add_argument("--port", type=int); sp.set_defaults(func=cmd_serve)
     sp = sub.add_parser("user"); sp.add_argument("action", choices=["add", "list"]); sp.add_argument("email", nargs="?")
-    sp.add_argument("--password"); sp.set_defaults(func=cmd_user)
+    sp.add_argument("--password"); sp.add_argument("--admin", action="store_true"); sp.set_defaults(func=cmd_user)
     sp = sub.add_parser("client"); sp.add_argument("action", choices=["add", "list"]); sp.add_argument("name", nargs="?", default="Client")
     sp.set_defaults(func=cmd_client)
     sp = sub.add_parser("models"); sp.add_argument("action", choices=["pull", "list"]); sp.add_argument("candidate", nargs="?")

@@ -24,13 +24,14 @@ export function Overview() {
   }, []);
   if (error) return <div className="text-danger">{error}</div>;
   if (!d) return <Spinner />;
-  const url = `${window.location.protocol}//${window.location.hostname}`;
+  const url = d.publicUrl;
   return (
     <>
       <h2 className="mb-4 font-display text-[22px] font-bold tracking-tight">Overview</h2>
-      <div className="mb-4 grid grid-cols-3 gap-3">
+      <div className="mb-4 grid grid-cols-4 gap-3">
         <Stat icon={<Mic className="h-3.5 w-3.5" />} label="Meetings" value={String(d.meetings)} hint={d.processing ? `${d.processing} processing` : "idle"} />
-        <Stat icon={<KeyRound className="h-3.5 w-3.5" />} label="Clients" value={String(d.clients)} hint={<Link to="/clients" className="hover:text-fg">Manage</Link>} />
+        <Stat icon={<Users className="h-3.5 w-3.5" />} label="Users" value={String(d.users)} hint={d.pendingUsers ? <Link to="/users" className="text-accent hover:underline">{d.pendingUsers} waiting for approval</Link> : <Link to="/users" className="hover:text-fg">{d.registration === "open" ? "open registration" : "by invitation"}</Link>} />
+        <Stat icon={<KeyRound className="h-3.5 w-3.5" />} label="Clients" value={String(d.clients)} hint={<Link to="/clients" className="hover:text-fg">{d.mcpTokens} MCP token{d.mcpTokens === 1 ? "" : "s"}</Link>} />
         <Stat icon={<HardDrive className="h-3.5 w-3.5" />} label="Audio stored" value={fmtBytes(d.recordingsBytes)} hint={d.maxBytes ? `cap ${fmtBytes(d.maxBytes)}` : "no cap"} />
       </div>
 
@@ -58,8 +59,8 @@ export function Overview() {
 
       <h3 className="mb-2 mt-6 font-display text-[11.5px] font-bold uppercase tracking-wider text-muted">MCP</h3>
       <Card>
-        <Row label="MCP over the network" hint={d.mcp?.networkEnabled ? `${url}/mcp — keys under Settings` : "Off. Turn on under Settings to let AI tools read these meetings."}>
-          <Network className="h-3.5 w-3.5 text-muted" /><Badge tone={d.mcp?.running ? "good" : "neutral"}>{d.mcp?.running ? "Running" : "Off"}</Badge>
+        <Row label="MCP endpoint" hint={`${url}/mcp — tokens are made per client (Clients page or the Huddle app) and see what that client sees.`}>
+          <Network className="h-3.5 w-3.5 text-muted" /><Badge tone="good">Running</Badge>
         </Row>
         <Row label="Known voices" hint="Voices are recognised on each Mac, not here: speaker names from the conversation are sent along, the voice match happens on the client."><Users className="h-3.5 w-3.5 text-muted" /></Row>
       </Card>

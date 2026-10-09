@@ -1,7 +1,8 @@
 import type React from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
+import { Link } from "@/lib/router";
 import { BrandMark, Button, Input } from "@/components/ui";
 
 function Frame({ name, title, children }: { name: string; title: string; children: React.ReactNode }) {
@@ -37,7 +38,38 @@ export function Setup({ name, onDone }: { name: string; onDone: () => void }) {
   );
 }
 
-export function Login({ name, totpRequired, onDone }: { name: string; totpRequired: boolean; onDone: () => void }) {
+export function Register({ name, invite, onDone }: { name: string; invite?: string; onDone: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [valid, setValid] = useState<boolean | null>(invite ? null : true);
+  const [pending, setPending] = useState(false);
+  useEffect(() => {
+    if (!invite) return;
+    api.inviteState(invite).then((s) => { setValid(s.valid); if (s.email) setEmail(s.email); }).catch(() => setValid(false));
+  }, [invite]);
+  const submit = async () => {
+    setBusy(true); setError(null);
+    try { const r = await api.register(email, password, invite); if (r.pending) setPending(true); else onDone(); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
+  };
+  if (valid === false) return <Frame name={name} title="Invitation"><p className="text-[13px]">This invitation link is no longer valid. Ask for a new one.</p><Link to="/" className="mt-3 block text-[12.5px] text-muted hover:text-fg">Log in</Link></Frame>;
+  if (pending) return <Frame name={name} title="Account requested"><p className="text-[13px]">An admin has to approve your account before you can log in.</p><Link to="/" className="mt-3 block text-[12.5px] text-muted hover:text-fg">Back</Link></Frame>;
+  return (
+    <Frame name={name} title={invite ? "You are invited — create your account" : "Create an account"}>
+      <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+        <Input type="email" placeholder="E-mail address" autoFocus autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Input type="password" placeholder="Password (at least 10 characters)" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        {error && <div className="text-[12.5px] text-danger">{error}</div>}
+        <Button type="submit" variant="primary" size="lg" loading={busy} disabled={!email || password.length < 10 || valid === null}>Create account</Button>
+        {!invite && <p className="text-[11.5px] text-muted">An admin approves new accounts before they can log in.</p>}
+        <Link to="/" className="text-[11.5px] text-muted hover:text-fg">Already have an account? Log in</Link>
+      </form>
+    </Frame>
+  );
+}
+
+export function Login({ name, totpRequired, registrationOpen, onDone }: { name: string; totpRequired: boolean; registrationOpen?: boolean; onDone: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -68,6 +100,7 @@ export function Login({ name, totpRequired, onDone }: { name: string; totpRequir
         {error && <div className="text-[12.5px] text-danger">{error}</div>}
         <Button type="submit" variant="primary" size="lg" loading={busy} disabled={totpRequired ? code.replace(/\s/g, "").length < 6 : !email || !password}>{totpRequired ? "Continue" : "Log in"}</Button>
         {totpRequired && <button type="button" className="text-[11.5px] text-muted hover:text-fg" onClick={async () => { await api.logout(); onDone(); }}>Use another account</button>}
+        {!totpRequired && registrationOpen && <Link to="/register" className="text-[11.5px] text-muted hover:text-fg">Create an account</Link>}
       </form>
     </Frame>
   );

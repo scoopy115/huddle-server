@@ -23,12 +23,26 @@ class AuthError(Exception):
     pass
 
 
+ROLES = ("admin", "user")
+INVITE_DAYS = 7
+
+
 @dataclass
 class User:
     id: int
     email: str
     totp_enabled: bool
     created_at: float
+    role: str = "user"
+    approved: bool = True
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == "admin"
+
+    def public(self) -> dict:
+        return {"id": self.id, "email": self.email, "totpEnabled": self.totp_enabled, "role": self.role,
+                "approved": self.approved, "createdAt": self.created_at}
 
 
 @dataclass
@@ -64,23 +78,106 @@ throttle = Throttle()
 
 
 def _user(r) -> User:
-    return User(id=r["id"], email=r["email"], totp_enabled=bool(r["totp_enabled"]), created_at=r["created_at"])
+    return User(id=r["id"], email=r["email"], totp_enabled=bool(r["totp_enabled"]), created_at=r["created_at"],
+                role=r["role"] if r["role"] in ROLES else "user", approved=bool(r["approved"]))
 
 
 def user_count(db: ServerDB) -> int:
     return int(db.one("SELECT COUNT(*) AS n FROM users")["n"])
 
 
-def create_user(db: ServerDB, email: str, password: str) -> User:
+def list_users(db: ServerDB) -> list[User]:
+    return [_user(r) for r in db.query("SELECT * FROM users ORDER BY created_at")]
+
+
+def get_user(db: ServerDB, user_id: int) -> User | None:
+    r = db.one("SELECT * FROM users WHERE id = ?", (user_id,))
+    return _user(r) if r else None
+
+
+def create_user(db: ServerDB, email: str, password: str, role: str = "user", approved: bool = True) -> User:
     email = email.strip().lower()
-    if "@" not in email or len(email) < 5:
+    if "@" not in email or len(email) < 5 or len(email) > 254:
         raise AuthError("Enter a valid e-mail address.")
     if len(password) < 10:
         raise AuthError("Use a password of at least 10 characters.")
     if db.one("SELECT 1 FROM users WHERE email = ?", (email,)):
         raise AuthError("An account with this e-mail address exists.")
-    cur = db.execute("INSERT INTO users(email, password_hash, created_at) VALUES (?,?,?)", (email, _ph.hash(password), time.time()))
+    cur = db.execute("INSERT INTO users(email, password_hash, created_at, role, approved) VALUES (?,?,?,?,?)",
+                     (email, _ph.hash(password), time.time(), role if role in ROLES else "user", 1 if approved else 0))
     return _user(db.one("SELECT * FROM users WHERE id = ?", (cur.lastrowid,)))
+
+
+def set_role(db: ServerDB, user_id: int, role: str) -> None:
+    if role not in ROLES:
+        raise AuthError("Unknown role.")
+    if role != "admin" and int(db.one("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND id != ?", (user_id,))["n"]) == 0:
+        raise AuthError("The server needs at least one admin.")
+    db.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
+
+
+def approve(db: ServerDB, user_id: int) -> None:
+    db.execute("UPDATE users SET approved = 1 WHERE id = ?", (user_id,))
+
+
+def delete_user(db: ServerDB, user_id: int) -> None:
+    r = db.one("SELECT role FROM users WHERE id = ?", (user_id,))
+    if r and r["role"] == "admin" and int(db.one("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'")["n"]) <= 1:
+        raise AuthError("The server needs at least one admin.")
+    db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+
+def admin_set_password(db: ServerDB, user_id: int, new: str) -> None:
+    if len(new) < 10:
+        raise AuthError("Use a password of at least 10 characters.")
+    db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (_ph.hash(new), user_id))
+    db.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+
+
+# ---- invites ------------------------------------------------------------------ #
+def _hash(t: str) -> str:
+    import hashlib
+    return hashlib.sha256(t.encode()).hexdigest()
+
+
+def create_invite(db: ServerDB, created_by: int, email: str | None = None) -> dict:
+    token = secrets.token_urlsafe(24)
+    now = time.time()
+    cur = db.execute("INSERT INTO invites(token_hash, prefix, email, created_by, created_at, expires_at) VALUES (?,?,?,?,?,?)",
+                     (_hash(token), token[:6], (email or "").strip().lower() or None, created_by, now, now + INVITE_DAYS * 86400))
+    return {"id": cur.lastrowid, "token": token, "email": email, "expiresAt": now + INVITE_DAYS * 86400}
+
+
+def list_invites(db: ServerDB) -> list[dict]:
+    return [{"id": r["id"], "prefix": r["prefix"], "email": r["email"], "createdAt": r["created_at"], "expiresAt": r["expires_at"],
+             "used": bool(r["used_at"]), "expired": r["expires_at"] < time.time() and not r["used_at"]}
+            for r in db.query("SELECT * FROM invites ORDER BY created_at DESC")]
+
+
+def delete_invite(db: ServerDB, invite_id: int) -> None:
+    db.execute("DELETE FROM invites WHERE id = ?", (invite_id,))
+
+
+def check_invite(db: ServerDB, token: str) -> dict | None:
+    r = db.one("SELECT * FROM invites WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?", (_hash(token or ""), time.time()))
+    return {"id": r["id"], "email": r["email"]} if r else None
+
+
+def register(db: ServerDB, email: str, password: str, invite_token: str | None, open_registration: bool, address: str = "") -> User:
+    """New account through an invite link (approved at once) or open registration (waits for an admin)."""
+    throttle.check(f"register:{address}")
+    throttle.hit(f"register:{address}")
+    inv = check_invite(db, invite_token) if invite_token else None
+    if invite_token and not inv:
+        raise AuthError("This invitation is no longer valid.")
+    if inv and inv["email"] and inv["email"] != email.strip().lower():
+        raise AuthError("This invitation was made for another e-mail address.")
+    if not inv and not open_registration:
+        raise AuthError("Registration is by invitation only.")
+    user = create_user(db, email, password, role="user", approved=bool(inv))
+    if inv:
+        db.execute("UPDATE invites SET used_at = ?, used_by = ? WHERE id = ?", (time.time(), user.id, inv["id"]))
+    return user
 
 
 def verify_password(db: ServerDB, email: str, password: str, address: str = "") -> User:
@@ -96,7 +193,10 @@ def verify_password(db: ServerDB, email: str, password: str, address: str = "") 
         raise AuthError("Wrong e-mail address or password.") from None
     if _ph.check_needs_rehash(r["password_hash"]):
         db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (_ph.hash(password), r["id"]))
-    return _user(r)
+    u = _user(r)
+    if not u.approved:
+        raise AuthError("Your account is waiting for approval by an admin.")
+    return u
 
 
 def change_password(db: ServerDB, user_id: int, current: str, new: str) -> None:
@@ -123,16 +223,17 @@ def create_session(db: ServerDB, user: User, hours: int, user_agent: str | None 
 def get_session(db: ServerDB, sid: str | None, hours: int) -> Session | None:
     if not sid:
         return None
-    r = db.one("SELECT s.*, u.email, u.totp_enabled, u.created_at AS u_created FROM sessions s JOIN users u ON u.id = s.user_id"
-               " WHERE s.id = ?", (sid,))
+    r = db.one("SELECT s.*, u.email, u.totp_enabled, u.created_at AS u_created, u.role, u.approved FROM sessions s"
+               " JOIN users u ON u.id = s.user_id WHERE s.id = ?", (sid,))
     now = time.time()
-    if not r or r["expires_at"] < now:
+    if not r or r["expires_at"] < now or not r["approved"]:
         if r:
             db.execute("DELETE FROM sessions WHERE id = ?", (sid,))
         return None
     if now - r["last_seen"] > 60:   # sliding expiry, written at most once a minute
         db.execute("UPDATE sessions SET last_seen = ?, expires_at = ? WHERE id = ?", (now, now + hours * 3600, sid))
-    user = User(id=r["user_id"], email=r["email"], totp_enabled=bool(r["totp_enabled"]), created_at=r["u_created"])
+    user = User(id=r["user_id"], email=r["email"], totp_enabled=bool(r["totp_enabled"]), created_at=r["u_created"],
+                role=r["role"] if r["role"] in ROLES else "user", approved=True)
     return Session(id=sid, user=user, totp_ok=bool(r["totp_ok"]), expires_at=r["expires_at"])
 
 

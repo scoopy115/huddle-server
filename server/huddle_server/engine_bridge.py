@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 from huddle_engine import __version__ as engine_version
-from huddle_engine.app import app as engine_app  # noqa: F401  (re-exported)
-from huddle_engine.app import ctx as engine_ctx  # noqa: F401
-from huddle_engine.app import lifespan as engine_lifespan  # noqa: F401
+from huddle_engine.app import app as engine_app
+from huddle_engine.app import ctx as engine_ctx
+from huddle_engine.app import lifespan as engine_lifespan
 from huddle_engine.resolver import ResolverContext, resolve_all
 
 
@@ -27,4 +27,4 @@ def capabilities() -> dict[str, Any]:
     }
 
 
-__all__ = ["engine_app", "engine_ctx", "engine_lifespan", "engine_version", "capabilities", "resolver"]
+__all__ = ["capabilities", "engine_app", "engine_ctx", "engine_lifespan", "engine_version", "resolver"]

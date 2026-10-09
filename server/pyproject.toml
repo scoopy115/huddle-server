@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "huddle-server"
 version = "0.1.0"
 description = "Self-hosted processing server for Huddle: transcription, speaker separation and notes on your own machine."
-readme = "../README.md"
+readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [

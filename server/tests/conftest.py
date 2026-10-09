@@ -11,7 +11,7 @@ os.environ["HUDDLE_INSECURE_COOKIES"] = "1"
 os.environ["HUDDLE_SERVER_NAME"] = "Test Server"
 os.environ["HUDDLE_NO_JOBS"] = ""   # jobs run (with fake stages)
 
-from fastapi.testclient import TestClient  # noqa: E402
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture(scope="session")
@@ -58,6 +58,6 @@ def client(fake_stages):
 @pytest.fixture(scope="session")
 def admin(client):
     """A logged-in dashboard session (cookie kept by the TestClient)."""
-    r = client.post("/api/setup", json={"email": "dylan@example.com", "password": "correct horse battery"})
+    r = client.post("/api/setup", json={"email": "dylan@example.com", "password": "correct horse battery"}, headers={"X-Requested-With": "huddle"})
     assert r.status_code == 200, r.text
     return client

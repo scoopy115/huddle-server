@@ -1,7 +1,6 @@
 // Dashboard ↔ server. /api is the server's own API, /engine the embedded Huddle engine.
 import type {
-  ApiKey, DownloadCandidate, DownloadProgress, Environment, McpStatus, Meeting, MeetingDetail, Resolution,
-  SetupPlan, StorageInfo, UserSettings,
+  DownloadCandidate, DownloadProgress, Environment, Meeting, MeetingDetail, Resolution, SetupPlan, StorageInfo, UserSettings,
 } from "@/types/engine";
 
 export class ApiError extends Error {
@@ -37,32 +36,49 @@ const del = <T>(p: string) => call<T>("DELETE", p);
 
 export const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export interface Me { user: { id: number; email: string; totpEnabled: boolean } | null; totpRequired: boolean }
-export interface Client { id: number; name: string; prefix: string; createdAt: number; lastSeenAt: number | null; lastVersion: string | null; revoked: boolean; meetingCount: number; key: string | null }
+export type Role = "admin" | "user";
+export interface User { id: number; email: string; totpEnabled: boolean; role: Role; approved: boolean; createdAt: number; clientCount?: number }
+export interface Me { user: User | null; totpRequired: boolean; registration: "invite" | "open"; canSeeAll?: boolean }
+export interface Client { id: number; name: string; prefix: string; createdAt: number; lastSeenAt: number | null; lastVersion: string | null; revoked: boolean; userId: number | null; userEmail: string | null; scope: "own" | "all"; meetingCount: number; tokenCount: number; key: string | null }
+export interface McpToken { id: number; clientId: number; clientName: string; name: string; prefix: string; createdAt: number; expiresAt: number | null; lastUsedAt: number | null; expired: boolean; revoked: boolean; scope: "own" | "all"; token: string | null; url?: string }
+export interface Invite { id: number; prefix: string; email: string | null; createdAt: number; expiresAt: number; used: boolean; expired: boolean; token?: string; url?: string }
 export interface Overview {
-  name: string; version: string; engineVersion: string; fingerprint: string | null;
+  name: string; version: string; engineVersion: string; fingerprint: string | null; publicUrl: string;
+  users: number; pendingUsers: number; mcpTokens: number; registration: "invite" | "open";
   hardware: { os: string; osVersion: string; arch: string; cpuBrand: string | null; cpuCores: number; memoryBytes: number | null };
   capabilities: { transcription: string | null; diarization: boolean; llm: string | null };
   resolutions: Resolution[]; meetings: number; processing: number; activeJob: string | null; clients: number;
-  recordingsBytes: number; maxBytes: number; retentionDays: number; mcp: McpStatus | null;
+  recordingsBytes: number; maxBytes: number; retentionDays: number;
 }
 
 export const api = {
   // server
-  setupState: () => get<{ needsSetup: boolean; name: string }>("/api/setup"),
+  setupState: () => get<{ needsSetup: boolean; name: string; registration: "invite" | "open" }>("/api/setup"),
   setup: (email: string, password: string) => post<Me>("/api/setup", { email, password }),
   login: (email: string, password: string) => post<Me>("/api/auth/login", { email, password }),
+  register: (email: string, password: string, invite?: string) => post<Me & { pending: boolean }>("/api/auth/register", { email, password, invite }),
+  inviteState: (token: string) => get<{ valid: boolean; email: string | null }>(`/api/auth/invite/${encodeURIComponent(token)}`),
   loginTotp: (code: string) => post<Me>("/api/auth/totp", { code }),
   logout: () => post<{ ok: boolean }>("/api/auth/logout"),
   me: () => get<Me>("/api/auth/me"),
-  info: () => get<{ name: string; version: string; engineVersion: string; fingerprint: string | null }>("/api/info"),
+  info: () => get<{ name: string; fingerprint: string | null }>("/api/info"),
   overview: () => get<Overview>("/api/overview"),
-  setServerName: (name: string) => put<{ name: string }>("/api/server", { name }),
+  updateServer: (body: { name?: string; registration?: "invite" | "open" }) => put<{ name: string; registration: "invite" | "open" }>("/api/server", body),
+  users: () => get<User[]>("/api/users"),
+  patchUser: (id: number, body: { role?: Role; approved?: boolean }) => patch<User>(`/api/users/${id}`, body),
+  deleteUser: (id: number) => del<{ ok: boolean }>(`/api/users/${id}`),
+  resetUserPassword: (id: number, password: string) => post<{ ok: boolean }>(`/api/users/${id}/password`, { password }),
+  invites: () => get<Invite[]>("/api/invites"),
+  createInvite: (email?: string) => post<Invite>("/api/invites", { email: email || null }),
+  deleteInvite: (id: number) => del<{ ok: boolean }>(`/api/invites/${id}`),
   clients: () => get<Client[]>("/api/clients"),
   createClient: (name: string) => post<Client>("/api/clients", { name }),
-  renameClient: (id: number, name: string) => patch<{ ok: boolean }>(`/api/clients/${id}`, { name }),
+  patchClient: (id: number, body: { name?: string; scope?: "own" | "all" }) => patch<Client>(`/api/clients/${id}`, body),
   revokeClient: (id: number) => post<{ ok: boolean }>(`/api/clients/${id}/revoke`),
   deleteClient: (id: number) => del<{ ok: boolean }>(`/api/clients/${id}`),
+  clientTokens: (id: number) => get<McpToken[]>(`/api/clients/${id}/mcp-tokens`),
+  createClientToken: (id: number, name: string, days: number) => post<McpToken>(`/api/clients/${id}/mcp-tokens`, { name, days }),
+  deleteToken: (id: number) => del<{ ok: boolean }>(`/api/mcp-tokens/${id}`),
   changePassword: (current: string, next: string) => post<{ ok: boolean }>("/api/account/password", { current, new: next }),
   totpSetup: () => post<{ secret: string; uri: string; svg: string }>("/api/account/totp/setup"),
   totpEnable: (code: string) => post<{ ok: boolean }>("/api/account/totp/enable", { code }),
@@ -80,15 +96,10 @@ export const api = {
   startDownload: (id: string) => post<DownloadProgress>(`/engine/models/downloads/${id}`),
   cancelDownload: (id: string) => del<{ ok: boolean }>(`/engine/models/downloads/${id}`),
   deleteModel: (id: string) => del<{ ok: boolean }>(`/engine/models/${id}`),
-  meetings: (q?: string) => get<Meeting[]>(`/engine/meetings${q ? `?q=${encodeURIComponent(q)}` : ""}`),
-  meeting: (id: string) => get<MeetingDetail>(`/engine/meetings/${id}`),
-  deleteMeeting: (id: string) => del<{ ok: boolean }>(`/engine/meetings/${id}`),
-  deleteAudio: (id: string) => post<{ freedBytes: number }>(`/engine/meetings/${id}/delete-audio`),
-  retryStage: (id: string, stage: string) => post<unknown>(`/engine/meetings/${id}/retry/${stage}`),
-  cancelProcessing: (id: string) => post<{ ok: boolean }>(`/engine/meetings/${id}/cancel`),
-  mcpStatus: () => get<McpStatus>("/engine/mcp/status"),
-  apiKeys: () => get<ApiKey[]>("/engine/mcp/keys"),
-  createApiKey: (name: string, validityDays: number) => post<ApiKey>("/engine/mcp/keys", { name, validityDays }),
-  renewApiKey: (id: number) => post<ApiKey>(`/engine/mcp/keys/${id}/renew`),
-  deleteApiKey: (id: number) => del<{ ok: boolean }>(`/engine/mcp/keys/${id}`),
+  meetings: (q?: string) => get<Meeting[]>(`/api/meetings${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  meeting: (id: string) => get<MeetingDetail & { ownerUserId: number | null }>(`/api/meetings/${encodeURIComponent(id)}`),
+  deleteMeeting: (id: string) => del<{ ok: boolean }>(`/api/meetings/${encodeURIComponent(id)}`),
+  deleteAudio: (id: string) => post<{ freedBytes: number }>(`/api/meetings/${encodeURIComponent(id)}/delete-audio`),
+  retryStage: (id: string, stage: string) => post<unknown>(`/api/meetings/${encodeURIComponent(id)}/retry/${stage}`),
+  cancelProcessing: (id: string) => post<{ ok: boolean }>(`/api/meetings/${encodeURIComponent(id)}/cancel`),
 };

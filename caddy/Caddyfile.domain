@@ -6,7 +6,7 @@
 		reverse_proxy huddle:48731
 	}
 	handle /mcp* {
-		reverse_proxy huddle:48800
+		reverse_proxy huddle:48731
 	}
 	handle /health {
 		reverse_proxy huddle:48731

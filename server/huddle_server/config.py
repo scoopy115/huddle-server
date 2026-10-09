@@ -21,6 +21,10 @@ class ServerConfig:
     session_hours: int = field(default_factory=lambda: int(os.getenv("HUDDLE_SESSION_HOURS", "72")))
     # when the dashboard is served over plain http (local development only) cookies cannot be Secure
     insecure_cookies: bool = field(default_factory=lambda: os.getenv("HUDDLE_INSECURE_COOKIES") == "1")
+    # largest recording a client may send (a FLAC hour at 16 kHz mono is ~60 MB)
+    max_upload_mb: int = field(default_factory=lambda: int(os.getenv("HUDDLE_MAX_UPLOAD_MB", "2048")))
+    # public URL of this server as clients reach it (for links in the dashboard); derived from the request when empty
+    public_url: str = field(default_factory=lambda: os.getenv("HUDDLE_PUBLIC_URL", "").rstrip("/"))
 
     @property
     def db_path(self) -> Path:
@@ -36,7 +40,8 @@ def apply_engine_env(cfg: ServerConfig) -> None:
     """The engine reads its configuration from the environment; make it match ours before it is
     imported. The server fronts the engine, so the engine itself needs no token."""
     os.environ.setdefault("HUDDLE_DATA_DIR", str(cfg.data_dir))
-    os.environ.setdefault("HUDDLE_MCP_BIND_PUBLIC", "1")
+    # the engine's own network MCP stays off: MCP is served by the server itself (scoped per token)
+    os.environ.pop("HUDDLE_MCP_BIND_PUBLIC", None)
     os.environ.setdefault("HUDDLE_SYSTEM_LANGUAGE", "en")
     os.environ.pop("HUDDLE_TOKEN", None)
     os.environ.pop("HUDDLE_PARENT_PID", None)

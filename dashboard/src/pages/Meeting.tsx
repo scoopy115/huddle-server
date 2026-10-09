@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertCircle, ArrowLeft, Calendar, Check, CheckCircle2, Circle, Clock, Loader2, RotateCw, Timer, Trash2, Users } from "lucide-react";
-import { api, errorMessage } from "@/lib/api";
+import { api, errorMessage, type Me } from "@/lib/api";
 import type { MeetingDetail, StageName } from "@/types/engine";
 import { STAGES } from "@/types/engine";
 import { fmtClock, fmtDate, fmtDuration, fmtTime } from "@/lib/format";
@@ -10,8 +10,8 @@ import { Badge, Button, DangerDialog, SectionTitle, Spinner } from "@/components
 
 const LABELS: Partial<Record<StageName, string>> = { preprocessing: "Audio", transcribing: "Transcript", diarizing: "Speakers", identifying_speakers: "Voices", refining: "Feedback", summarizing: "Notes", extracting_actions: "Action items", indexing: "Index" };
 
-export function MeetingPage({ id }: { id: string }) {
-  const [d, setD] = useState<MeetingDetail | null>(null);
+export function MeetingPage({ id, me }: { id: string; me: Me }) {
+  const [d, setD] = useState<(MeetingDetail & { ownerUserId: number | null }) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const load = useCallback(() => api.meeting(id).then((x) => { setD(x); setError(null); }).catch((e) => setError(errorMessage(e))), [id]);
@@ -22,13 +22,14 @@ export function MeetingPage({ id }: { id: string }) {
   if (!d) return <Spinner />;
   const m = d.meeting;
   const names = new Map(d.speakers.map((s) => [s.id, s]));
+  const canWrite = me.user?.role === "admin" || (d.ownerUserId != null && d.ownerUserId === me.user?.id);
   return (
     <>
       <div className="mb-3 flex items-center gap-2">
         <Link to="/meetings" className="inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[12.5px] text-muted hover:bg-fg/[0.05] hover:text-fg"><ArrowLeft className="h-3.5 w-3.5" /> Meetings</Link>
         <div className="flex-1" />
-        {d.audioPath && !processing && <Button size="sm" variant="ghost" onClick={async () => { await api.deleteAudio(id); load(); }}>Delete audio only</Button>}
-        <Button size="sm" variant="ghost" onClick={() => setDeleting(true)}><Trash2 className="h-3.5 w-3.5 text-danger" /> Delete</Button>
+        {canWrite && d.audioPath && !processing && <Button size="sm" variant="ghost" onClick={async () => { await api.deleteAudio(id); load(); }}>Delete audio only</Button>}
+        {canWrite && <Button size="sm" variant="ghost" onClick={() => setDeleting(true)}><Trash2 className="h-3.5 w-3.5 text-danger" /> Delete</Button>}
       </div>
       <h1 className="selectable mb-2 font-display text-[26px] font-bold leading-tight tracking-tight">{m.title}</h1>
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-muted">
@@ -42,7 +43,7 @@ export function MeetingPage({ id }: { id: string }) {
           {d.speakers.map((s) => { const c = speakerColor(s.colorIndex); const n = s.displayName || s.speakerName || s.label; return <span key={s.id} className={cn("inline-flex items-center gap-1.5 rounded-full border border-transparent px-2.5 py-1 text-[12.5px] font-medium", c.bg, c.text)}><Users className="h-3 w-3" />{n}</span>; })}
         </div>
       )}
-      {d.audioPath && <audio controls preload="none" className="mb-4 w-full" src={`/engine/meetings/${encodeURIComponent(id)}/audio`} />}
+      {d.audioPath && <audio controls preload="none" className="mb-4 w-full" src={`/api/meetings/${encodeURIComponent(id)}/audio`} />}
       {error && <div className="mb-3 text-[12.5px] text-danger">{error}</div>}
 
       {d.job && d.job.state !== "ready" && (
@@ -58,12 +59,12 @@ export function MeetingPage({ id }: { id: string }) {
                   {st === "running" && prog != null && <span className="font-mono text-[11.5px] text-accent">{Math.round(prog * 100)}%</span>}
                   {d.job!.stages[s]?.detail && st !== "pending" && <span className="truncate text-[11px] text-muted">{d.job!.stages[s]!.detail}</span>}
                   {st === "failed" && <span className="text-[12px] text-danger">{d.job!.stages[s]?.error}</span>}
-                  {st === "failed" && !processing && <Button size="sm" className="ml-auto" onClick={async () => { await api.retryStage(id, s); load(); }}><RotateCw className="h-3 w-3" /> Retry</Button>}
+                  {st === "failed" && !processing && canWrite && <Button size="sm" className="ml-auto" onClick={async () => { await api.retryStage(id, s); load(); }}><RotateCw className="h-3 w-3" /> Retry</Button>}
                 </li>
               );
             })}
           </ol>
-          {processing && <Button size="sm" variant="ghost" className="mt-2" onClick={async () => { await api.cancelProcessing(id); setTimeout(load, 800); }}>Cancel</Button>}
+          {processing && canWrite && <Button size="sm" variant="ghost" className="mt-2" onClick={async () => { await api.cancelProcessing(id); setTimeout(load, 800); }}>Cancel</Button>}
         </div>
       )}
 

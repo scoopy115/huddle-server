@@ -1,6 +1,7 @@
 # engine source copied in by scripts/fetch-engine.sh (never committed; it lives in the Huddle repo)
 vendor/
 server/.venv/
+server/.venv.nosync/
 server/huddle_server/static/
 !server/huddle_server/static/.gitkeep
 dashboard/node_modules/
