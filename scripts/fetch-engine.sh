@@ -5,6 +5,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="${HUDDLE_REPO:-https://github.com/scoopy115/huddle.git}"
+# A private Huddle repository: pass a token (HUDDLE_REPO_TOKEN) and it is woven into the clone URL.
+if [ -n "${HUDDLE_REPO_TOKEN:-}" ]; then REPO="$(printf '%s' "$REPO" | sed "s#https://#https://x-access-token:${HUDDLE_REPO_TOKEN}@#")"; fi
 MODE="${1:-auto}"
 REF="${2:-main}"
 rm -rf "$ROOT/vendor/engine"

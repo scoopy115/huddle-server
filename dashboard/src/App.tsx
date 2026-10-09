@@ -35,12 +35,12 @@ const NAV: Nav[] = [
   { to: "/actions", label: "Action Items", icon: CheckSquare, hint: `${modKey}3` },
   { to: "/search", label: "Search", icon: SearchIcon, hint: `${modKey}K` },
   { to: "/processes", label: "Processes", icon: Activity, admin: true, hint: `${modKey}4` },
-  { to: "/", label: "Overview", icon: LayoutDashboard, admin: true, match: (p) => p === "/" },
-  { to: "/clients", label: "Clients", icon: KeyRound },
-  { to: "/users", label: "Users", icon: UsersIcon, admin: true },
-  { to: "/models", label: "Models", icon: Sliders, admin: true },
+  { to: "/", label: "Overview", icon: LayoutDashboard, admin: true, hint: `${modKey}5`, match: (p) => p === "/" },
+  { to: "/clients", label: "Clients", icon: KeyRound, hint: `${modKey}6` },
+  { to: "/users", label: "Users", icon: UsersIcon, admin: true, hint: `${modKey}7` },
+  { to: "/models", label: "Models", icon: Sliders, admin: true, hint: `${modKey}8` },
   { to: "/settings", label: "Settings", icon: SettingsIcon, admin: true, hint: `${modKey},` },
-  { to: "/account", label: "Account", icon: UserRound },
+  { to: "/account", label: "Account", icon: UserRound, hint: `${modKey}9` },
 ];
 
 function NavItem({ item, active, count }: { item: Nav; active: boolean; count?: number }) {
@@ -90,7 +90,7 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       const k = e.key.toLowerCase();
-      const map: Record<string, string> = { "1": "/meetings", "2": "/projects", "3": "/actions", "4": "/processes", ",": "/settings" };
+      const map: Record<string, string> = { "1": "/meetings", "2": "/projects", "3": "/actions", "4": "/processes", "5": "/", "6": "/clients", "7": "/users", "8": "/models", "9": "/account", ",": "/settings" };
       if (k === "k") { e.preventDefault(); setPalette((p) => !p); }
       else if (map[k]) { e.preventDefault(); navigate(map[k]); }
     };
@@ -140,8 +140,7 @@ export function App() {
       <div className="flex h-full">
         <aside className="relative flex h-full w-[224px] shrink-0 flex-col border-r border-border bg-sidebar">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(70%_60%_at_30%_0%,rgb(var(--accent)/0.12),transparent_70%)]" />
-          <div className="relative flex items-center justify-center px-4 pb-6 pt-7"><img src={logo} alt="Huddle" className="h-9 w-auto select-none" draggable={false} /></div>
-          <div className="relative px-4 pb-3 text-center text-[11.5px] text-muted">{name}</div>
+          <div className="relative flex items-center justify-center px-4 pb-8 pt-7"><img src={logo} alt="Huddle" className="h-9 w-auto select-none" draggable={false} /></div>
           <nav className="relative flex flex-col gap-0.5 px-3">
             {nav.map((n) => <NavItem key={n.to} item={n} active={active === n.to} count={n.to === "/actions" ? openActions : n.to === "/processes" ? running : undefined} />)}
           </nav>
