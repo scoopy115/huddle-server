@@ -1,0 +1,10 @@
+dashboard/node_modules
+dashboard/dist
+server/.venv
+server/huddle_server/static
+**/__pycache__
+**/.pytest_cache
+data
+certs
+.env
+.git

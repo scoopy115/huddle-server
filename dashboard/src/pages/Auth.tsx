@@ -1,0 +1,74 @@
+import type React from "react";
+import { useState } from "react";
+import { ShieldCheck } from "lucide-react";
+import { api, errorMessage } from "@/lib/api";
+import { BrandMark, Button, Input } from "@/components/ui";
+
+function Frame({ name, title, children }: { name: string; title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex h-full items-center justify-center p-6">
+      <div className="panel w-full max-w-[380px] p-6">
+        <div className="mb-5 flex items-center gap-2"><BrandMark className="h-6 w-6 text-accent" /><div><div className="page-title">{name}</div><div className="text-[12px] text-muted">{title}</div></div></div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function Setup({ name, onDone }: { name: string; onDone: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async () => {
+    setBusy(true); setError(null);
+    try { await api.setup(email, password); onDone(); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
+  };
+  return (
+    <Frame name={name} title="Create the admin account">
+      <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+        <Input type="email" placeholder="E-mail address" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Input type="password" placeholder="Password (at least 10 characters)" value={password} onChange={(e) => setPassword(e.target.value)} />
+        {error && <div className="text-[12.5px] text-danger">{error}</div>}
+        <Button type="submit" variant="primary" size="lg" loading={busy} disabled={!email || password.length < 10}>Create account</Button>
+        <p className="text-[11.5px] text-muted">Turn on two-factor authentication under Account afterwards.</p>
+      </form>
+    </Frame>
+  );
+}
+
+export function Login({ name, totpRequired, onDone }: { name: string; totpRequired: boolean; onDone: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async () => {
+    setBusy(true); setError(null);
+    try {
+      if (totpRequired) await api.loginTotp(code);
+      else await api.login(email, password);
+      onDone();
+    } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
+  };
+  return (
+    <Frame name={name} title={totpRequired ? "Authenticator code" : "Log in"}>
+      <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+        {totpRequired ? (
+          <>
+            <Input inputMode="numeric" autoComplete="one-time-code" placeholder="123 456" autoFocus value={code} onChange={(e) => setCode(e.target.value)} className="text-center font-mono text-[16px] tracking-widest" />
+            <div className="flex items-center gap-1.5 text-[11.5px] text-muted"><ShieldCheck className="h-3.5 w-3.5" /> Open your authenticator app for the six-digit code.</div>
+          </>
+        ) : (
+          <>
+            <Input type="email" placeholder="E-mail address" autoFocus autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input type="password" placeholder="Password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </>
+        )}
+        {error && <div className="text-[12.5px] text-danger">{error}</div>}
+        <Button type="submit" variant="primary" size="lg" loading={busy} disabled={totpRequired ? code.replace(/\s/g, "").length < 6 : !email || !password}>{totpRequired ? "Continue" : "Log in"}</Button>
+        {totpRequired && <button type="button" className="text-[11.5px] text-muted hover:text-fg" onClick={async () => { await api.logout(); onDone(); }}>Use another account</button>}
+      </form>
+    </Frame>
+  );
+}

@@ -1,0 +1,27 @@
+# No public domain: the server's own certificate (generated at first start, valid 10 years).
+{
+	auto_https off
+}
+
+# Client API + MCP
+:443 {
+	tls /certs/server.crt /certs/server.key
+	handle /v1/* {
+		reverse_proxy huddle:48731
+	}
+	handle /mcp* {
+		reverse_proxy huddle:48800
+	}
+	handle /health {
+		reverse_proxy huddle:48731
+	}
+	handle {
+		respond "Huddle Server" 404
+	}
+}
+
+# Dashboard (forward this port only when you need it remotely)
+:8443 {
+	tls /certs/server.crt /certs/server.key
+	reverse_proxy huddle:48731
+}

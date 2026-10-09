@@ -1,0 +1,22 @@
+# Public domain: Let's Encrypt via Caddy. Port 80 and 443 must reach this host for the challenge.
+
+# Client API + MCP
+{$HUDDLE_DOMAIN} {
+	handle /v1/* {
+		reverse_proxy huddle:48731
+	}
+	handle /mcp* {
+		reverse_proxy huddle:48800
+	}
+	handle /health {
+		reverse_proxy huddle:48731
+	}
+	handle {
+		respond "Huddle Server" 404
+	}
+}
+
+# Dashboard
+{$HUDDLE_DOMAIN}:8443 {
+	reverse_proxy huddle:48731
+}

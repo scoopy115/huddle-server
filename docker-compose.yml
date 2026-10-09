@@ -1,0 +1,59 @@
+# Huddle Server. Copy .env.example to .env (or let install.sh do it), then: docker compose up -d
+#
+#   :${HUDDLE_PORT}            client API (/v1) and MCP (/mcp) — the port your Huddle app connects to
+#   :${HUDDLE_DASHBOARD_PORT}  the dashboard — forward it only if you need the dashboard from outside
+#
+# With HUDDLE_DOMAIN set, Caddy fetches a Let's Encrypt certificate (ports 80/443 must reach this host).
+# Without a domain, the server makes a self-signed certificate; its fingerprint is shown in the dashboard
+# and confirmed once in the Huddle app.
+
+services:
+  huddle:
+    image: ${HUDDLE_IMAGE:-ghcr.io/scoopy115/huddle-server:latest}
+    build: .
+    restart: unless-stopped
+    environment:
+      HUDDLE_SERVER_NAME: ${HUDDLE_SERVER_NAME:-Huddle Server}
+      HUDDLE_SYSTEM_LANGUAGE: ${HUDDLE_LANGUAGE:-en}
+      HUDDLE_OLLAMA_URL: ${HUDDLE_OLLAMA_URL:-http://ollama:11434}
+      HUDDLE_SESSION_HOURS: ${HUDDLE_SESSION_HOURS:-72}
+    volumes:
+      - huddle-data:/data
+      - certs:/certs
+    expose: ["48731", "48800"]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    command: caddy run --config /etc/caddy/${HUDDLE_CADDYFILE:-Caddyfile.selfsigned} --adapter caddyfile
+    ports:
+      - "${HUDDLE_PORT:-443}:443"
+      - "${HUDDLE_DASHBOARD_PORT:-8443}:8443"
+      - "${HUDDLE_HTTP_PORT:-80}:80"
+    environment:
+      HUDDLE_DOMAIN: ${HUDDLE_DOMAIN:-}
+    volumes:
+      - ./caddy:/etc/caddy:ro
+      - caddy-data:/data
+      - caddy-config:/config
+      - certs:/certs:ro
+    depends_on:
+      huddle:
+        condition: service_healthy
+
+  # Optional: notes with a local AI model. Start with `docker compose --profile ai up -d`, then
+  # download a model in the dashboard (Models). Needs ~6 GB of RAM for the recommended 4B model.
+  ollama:
+    image: ollama/ollama
+    restart: unless-stopped
+    profiles: ["ai"]
+    volumes:
+      - ollama:/root/.ollama
+    expose: ["11434"]
+
+volumes:
+  huddle-data:
+  certs:
+  caddy-data:
+  caddy-config:
+  ollama:
