@@ -67,6 +67,7 @@ def create_app(cfg: ServerConfig | None = None) -> FastAPI:
             cert, _ = certs.ensure(cfg.tls_dir, cfg.name)
             log.info("TLS certificate %s · fingerprint %s", cert, certs.fingerprint(cert))
         async with engine_lifespan(engine_app):
+            _server_engine_defaults(engine_ctx())
             server = mcp_scoped.build(engine_ctx().db)
             mcp["server"] = server
             mcp_app = server.streamable_http_app(streamable_http_path="/", stateless_http=True, json_response=True, host="0.0.0.0",
@@ -141,6 +142,19 @@ def create_app(cfg: ServerConfig | None = None) -> FastAPI:
         return JSONResponse({"detail": "Dashboard not built. Run `npm run build:server` in dashboard/."}, status_code=404)
 
     return app
+
+
+def _server_engine_defaults(c) -> None:
+    """Engine settings that differ on a server: voices are recognised on the clients, never across
+    accounts here; the engine's own network MCP stays off (the server serves a scoped one)."""
+    patch = {}
+    s = c.settings()
+    if s.get("speakers.recognition", True):
+        patch["speakers.recognition"] = False
+    if s.get("mcp.networkEnabled", False):
+        patch["mcp.networkEnabled"] = False
+    if patch:
+        c.update_settings(patch)
 
 
 def _transport_security():

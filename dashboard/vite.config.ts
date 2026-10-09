@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
 
-// Dev: `npm run dev` proxies API calls to a server started with `HUDDLE_INSECURE_COOKIES=1 huddle-server serve`.
+// Dev: `npm run dev` proxies API calls to a server started with `huddle-server serve`.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "./src") } },

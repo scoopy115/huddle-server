@@ -18,10 +18,11 @@ router = APIRouter(prefix="/api")
 
 
 def _cookie(request: Request, response: Response, sid: str | None) -> None:
+    """Secure cookie when the dashboard is reached over https (directly or through a reverse proxy)."""
     cfg = request.app.state.cfg
+    https = (request.headers.get("x-forwarded-proto") or request.url.scheme) == "https"
     if sid:
-        response.set_cookie(auth.COOKIE, sid, max_age=cfg.session_hours * 3600, httponly=True, secure=not cfg.insecure_cookies,
-                            samesite="lax", path="/")
+        response.set_cookie(auth.COOKIE, sid, max_age=cfg.session_hours * 3600, httponly=True, secure=https, samesite="lax", path="/")
     else:
         response.delete_cookie(auth.COOKIE, path="/")
 
@@ -81,6 +82,11 @@ class Named(BaseModel):
 class ClientPatch(BaseModel):
     name: str | None = None
     scope: str | None = None
+    ai_enabled: bool | None = None
+
+
+class Onboarding(BaseModel):
+    completed: bool
 
 
 class ServerPatch(BaseModel):
@@ -207,21 +213,84 @@ def info(request: Request):
 # ---- admin: overview, server, users, invites ------------------------------------ #
 @router.get("/overview")
 def overview(request: Request):
+    import time as _t
     cfg = request.app.state.cfg
     db = request.app.state.db
     c = engine_ctx()
     fp = certs.fingerprint(cfg.tls_dir / "server.crt") if cfg.tls_dir else None
     from huddle_engine.resolver import resolve_all
+    # processed per day, last 30 days (local time of the server)
+    since = _t.time() - 30 * 86400
+    days: dict[str, dict] = {}
+    for r in c.db.query("SELECT started_at, duration_sec, status FROM meetings WHERE started_at >= ?", (since,)):
+        key = _t.strftime("%Y-%m-%d", _t.localtime(r["started_at"]))
+        d = days.setdefault(key, {"date": key, "meetings": 0, "minutes": 0.0})
+        d["meetings"] += 1
+        d["minutes"] += (r["duration_sec"] or 0) / 60
+    totals = c.db.one("SELECT COUNT(*) AS n, COALESCE(SUM(duration_sec), 0) AS sec FROM meetings WHERE status = 'ready'")
+    gpu = [d for d in c.hardware.get("gpus", []) if isinstance(d, dict)] if isinstance(c.hardware.get("gpus"), list) else []
     return {"name": cfg.name, "version": __version__, "engineVersion": engine_version, "fingerprint": fp, "publicUrl": _public_url(request),
-            "hardware": c.hardware, "capabilities": capabilities(), "resolutions": [r.model_dump(by_alias=True) for r in resolve_all(resolver())],
+            "hardware": {**c.hardware, "gpu": (gpu[0].get("name") if gpu else None) or c.hardware.get("acceleratorName")},
+            "capabilities": capabilities(), "resolutions": [r.model_dump(by_alias=True) for r in resolve_all(resolver())],
             "meetings": int(c.db.one("SELECT COUNT(*) AS n FROM meetings")["n"]),
             "processing": int(c.db.one("SELECT COUNT(*) AS n FROM meetings WHERE status = 'processing'")["n"]),
+            "processed": int(totals["n"]), "processedMinutes": round(float(totals["sec"]) / 60),
+            "perDay": [days[k] for k in sorted(days)],
             "activeJob": c.jobs.active_meeting,
             "clients": len([x for x in clients.list_clients(db) if not x.revoked]),
             "users": auth.user_count(db), "pendingUsers": len([u for u in auth.list_users(db) if not u.approved]),
             "mcpTokens": len([t for t in mcp_tokens.list_for_user(db, None) if not t.revoked]),
             "recordingsBytes": ms.recordings_bytes(c.cfg), "maxBytes": int(c.settings().get("storage.maxBytes") or 0),
-            "retentionDays": int(c.settings().get("privacy.retentionDays") or 0), "registration": _registration(db)}
+            "retentionDays": int(c.settings().get("privacy.retentionDays") or 0), "registration": _registration(db),
+            "onboarded": db.get_config("onboarding", "") == "done", "speakerModels": _speaker_models_state(request)}
+
+
+@router.get("/onboarding")
+def onboarding_state(request: Request):
+    return {"completed": request.app.state.db.get_config("onboarding", "") == "done"}
+
+
+@router.put("/onboarding")
+def onboarding_set(request: Request, body: Onboarding):
+    request.app.state.db.set_config("onboarding", "done" if body.completed else "")
+    return {"completed": body.completed}
+
+
+def _speaker_models_state(request: Request) -> dict:
+    from huddle_engine.providers import speaker_models
+    c = engine_ctx()
+    st = getattr(request.app.state, "speaker_dl", None) or {}
+    return {"installed": speaker_models.installed(c.cfg.models_dir), "downloading": bool(st.get("running")),
+            "progress": st.get("progress", 0.0), "error": st.get("error")}
+
+
+@router.get("/setup/speaker-models")
+def speaker_models_state(request: Request):
+    return _speaker_models_state(request)
+
+
+@router.post("/setup/speaker-models")
+def speaker_models_download(request: Request):
+    """Fetch the speaker separation models now instead of on the first recording."""
+    import threading
+
+    from huddle_engine.providers import speaker_models
+    c = engine_ctx()
+    st = getattr(request.app.state, "speaker_dl", None)
+    if st and st.get("running"):
+        return _speaker_models_state(request)
+    st = {"running": True, "progress": 0.0, "error": None}
+    request.app.state.speaker_dl = st
+
+    def run():
+        try:
+            speaker_models.ensure_speaker_models(c.cfg.models_dir, progress=lambda f: st.__setitem__("progress", f))
+        except Exception as e:  # noqa: BLE001 — network, disk; the message is shown in the dashboard
+            st["error"] = str(e)
+        finally:
+            st["running"] = False
+    threading.Thread(target=run, name="huddle-speaker-models", daemon=True).start()
+    return _speaker_models_state(request)
 
 
 @router.put("/server")
@@ -347,6 +416,10 @@ def patch_client(request: Request, client_id: int, body: ClientPatch):
             clients.set_scope(db, c.id, body.scope)
         except ValueError as e:
             raise HTTPException(400, str(e)) from None
+    if body.ai_enabled is not None:
+        if not s.user.is_admin:
+            raise HTTPException(403, "Only an admin changes whether a client gets AI notes")
+        clients.set_ai(db, c.id, body.ai_enabled)
     return clients.get(db, c.id).public()
 
 

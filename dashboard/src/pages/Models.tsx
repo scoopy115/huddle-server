@@ -6,6 +6,13 @@ import { fmtBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Badge, Button, Card, DangerDialog, Row, Select, Spinner } from "@/components/ui";
 
+/** The engine's candidate copy is written for the desktop app; on a server the platform is a given. */
+const purposeOf = (c: DownloadCandidate) => c.purpose
+  .replace(/ — works on any Mac and on Windows/i, "")
+  .replace(/ — fits Macs with (.+?) or more/i, " — needs $1 of memory")
+  .replace(/ for older or low-memory Macs/i, " for low-memory servers")
+  .replace(/about 10× faster than the CPU version/i, "about 10× faster than on the CPU");
+
 const title = (m: LocalModel) => m.task === "transcription" && m.meta.whisperSize ? `Whisper ${m.meta.whisperSize} (${m.format === "MLX" ? "Apple Silicon" : m.format === "CTranslate2" ? "CPU / CUDA" : m.format})` : m.name;
 
 function CandidateRow({ c, progress, installed, memoryBytes, onStart, onCancel }: { c: DownloadCandidate; progress?: DownloadProgress; installed: boolean; memoryBytes?: number | null; onStart: () => void; onCancel: () => void }) {
@@ -13,10 +20,10 @@ function CandidateRow({ c, progress, installed, memoryBytes, onStart, onCancel }
   const active = progress && (progress.state === "downloading" || progress.state === "verifying");
   const tooBig = !!c.minMemoryBytes && !!memoryBytes && memoryBytes < c.minMemoryBytes;
   return (
-    <div className={cn("flex items-start gap-3 border-b border-border px-4 py-3 last:border-b-0", tooBig && !installed && "opacity-50")}>
+    <div className={cn("flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0", tooBig && !installed && "opacity-50")}>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-[13px] font-medium">{c.name}{c.recommended && <Badge tone="accent"><Star className="h-3 w-3" /> Recommended</Badge>}</div>
-        <div className="mt-0.5 flex flex-wrap gap-x-3 text-[12px] text-muted"><span>{c.purpose}</span><span className="inline-flex items-center gap-1"><Download className="h-3 w-3" />{c.sizeBytes ? fmtBytes(c.sizeBytes) : "size varies"}</span><span>{c.license}</span></div>
+        <div className="mt-0.5 flex flex-wrap gap-x-3 text-[12px] text-muted"><span>{purposeOf(c)}</span><span className="inline-flex items-center gap-1"><Download className="h-3 w-3" />{c.sizeBytes ? fmtBytes(c.sizeBytes) : "size varies"}</span><span>{c.license}</span></div>
         {tooBig && !installed && <div className="mt-0.5 text-[12px] text-danger">Needs {fmtBytes(c.minMemoryBytes!)} of memory; this server has {fmtBytes(memoryBytes!)}.</div>}
         {active && <div className="mt-1.5 h-1 w-full overflow-hidden rounded bg-fg/10"><div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} /></div>}
         {progress?.state === "failed" && <div className="mt-1 text-[12px] text-danger">{progress.error}</div>}
@@ -82,7 +89,7 @@ export function Models() {
             {(!m.externallyManaged || m.meta.pulledByHuddle) && <Button size="sm" variant="ghost" onClick={() => setConfirm(m)}><Trash2 className="h-3.5 w-3.5" /></Button>}
           </div>
         ))}
-        {models.length === 0 && <div className="px-4 py-3 text-[12.5px] text-muted">{task === "llm" && ollama?.status !== "available" ? "Ollama is not reachable. Start the server with the ai profile (docker compose --profile ai up -d) or set HUDDLE_OLLAMA_URL." : "Nothing installed yet."}</div>}
+        {models.length === 0 && <div className="px-4 py-3 text-[12.5px] text-muted">{task === "llm" && ollama?.status !== "available" ? "Ollama is not reachable." : "Nothing installed yet."}</div>}
       </Card>
       <Card className="mt-3">
         {candsFor(task).map((c) => <CandidateRow key={c.id} c={c} progress={downloads.find((d) => d.id === c.id)} installed={isInstalled(c)} memoryBytes={env.hardware.memoryBytes}
@@ -98,7 +105,7 @@ export function Models() {
         <Button size="sm" variant="ghost" loading={env.scanning} onClick={async () => { await api.rescan(); load(); }}><RefreshCw className="h-3 w-3" /> Rescan</Button>
       </div>
       <Card>
-        <Row label="Compute device" hint="Where transcription runs. CUDA needs an NVIDIA GPU visible to the container.">
+        <Row label="Compute device" info="Where transcription runs. CUDA needs an NVIDIA GPU that the container can see.">
           <Select value={settings["general.computeDevice"]} onChange={(e) => update({ "general.computeDevice": e.target.value })}>
             <option value="auto">Automatic</option>
             {env.devices.filter((d) => d.available).map((d) => <option key={d.id} value={d.id}>{d.name} — {d.backend.toUpperCase()}</option>)}

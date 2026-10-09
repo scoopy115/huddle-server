@@ -16,29 +16,18 @@ Linux or macOS with Docker:
 curl -fsSL https://raw.githubusercontent.com/scoopy115/huddle-server/main/install.sh | sh
 ```
 
-The installer asks for a name, an optional public domain and two ports, writes `~/huddle-server/.env`
-and starts the containers. Then:
+The installer asks for a name and a port, writes `~/huddle-server/.env` and starts the containers
+(the server plus Ollama for the notes). Then open the dashboard (`http://<host>:48731`), create the
+admin account and follow the setup: download a transcription model, the speaker separation models
+and, if you want notes written on the server, an AI model. Clients → New client key gives you the
+key for the Huddle app (Settings → Server).
 
-1. Open the dashboard (`https://<host>:8443`) and create the admin account. Turn on two-factor
-   authentication under Account.
-2. Models → download a transcription model. With the `ai` profile (`docker compose --profile ai up -d`)
-   you can also download an AI model for the notes; without one, the Huddle app writes the notes on
-   the Mac after the server returns the transcript.
-3. Clients → New client key. Paste the server address and the key in Huddle under Settings → Server.
-
-Without a domain the server uses its own certificate. Huddle shows its SHA-256 fingerprint on first
-contact; compare it with the one on the dashboard's Overview page and confirm. With `HUDDLE_DOMAIN`
-set, Caddy fetches a Let's Encrypt certificate and nothing needs confirming.
-
-### Ports
-
-| Port (default) | What | Forward it? |
-|---|---|---|
-| 443 | Client API (`/v1`) and MCP (`/mcp`) | Yes, this is what the Huddle app connects to |
-| 8443 | Dashboard | Only when you need the dashboard from outside your network |
-| 80 | Let's Encrypt challenge | Only with a domain |
-
-Change them in `.env` (`HUDDLE_PORT`, `HUDDLE_DASHBOARD_PORT`, `HUDDLE_HTTP_PORT`).
+The server speaks plain HTTP on one port. Put your own reverse proxy in front for TLS, like you
+would for any other self-hosted service. If you have none, the built-in proxy (`COMPOSE_PROFILES=tls`
+in `.env`, see `.env.example`) serves the client API on 443 and the dashboard on 8443, with a
+Let's Encrypt certificate when `HUDDLE_DOMAIN` is set and otherwise the server's own certificate;
+the Huddle app shows that certificate's fingerprint on first contact so you can confirm it against
+the dashboard.
 
 ### Without Docker
 
@@ -48,8 +37,8 @@ pip install "huddle-server @ git+https://github.com/scoopy115/huddle-server.git#
 HUDDLE_DATA_DIR=~/huddle-data HUDDLE_TLS_DIR=~/huddle-data/certs huddle-server serve
 ```
 
-This runs on `http://0.0.0.0:48731` without TLS; put your own reverse proxy in front, or use the
-Docker setup. On an Apple Silicon Mac the bare install uses MLX (Metal) for transcription.
+This runs on `http://0.0.0.0:48731`. On an Apple Silicon Mac the bare install uses MLX (Metal)
+for transcription. Ollama has to run on the same machine (or set `HUDDLE_OLLAMA_URL`).
 
 `huddle-server --help` lists the CLI: create accounts and client keys, pull models, print the
 certificate fingerprint. Accounts made on the CLI are admins when they are the first account.
@@ -62,7 +51,8 @@ certificate fingerprint. Accounts made on the CLI are admins when they are the f
   *open*, by creating an account that an admin then approves.
 - **Clients** are devices with a key (a Mac running Huddle, later a phone). Every account makes its
   own client keys. A client has a *scope*: it sees its **own** recordings, or — when an admin says
-  so — **all** recordings on the server. The dashboard shows an account the recordings of its
+  so — **all** recordings on the server. An admin can also switch AI notes off per client: that
+  client gets transcripts and speakers, nothing else. The dashboard shows an account the recordings of its
   clients, and everything when one of its clients has scope *all*. Only the account that sent a
   recording (or an admin) can delete it.
 - **MCP tokens** are made per client, from the Huddle app (`/v1/mcp-tokens`) or the dashboard
@@ -96,6 +86,10 @@ leave everyone on *own*; nobody sees anyone else's recordings, not even over MCP
   embeddings, and the notes when the server wrote them. Known-voice recognition runs on the Mac,
   because the voices live there.
 - Audio retention (days, storage cap) is set in the dashboard; transcripts and notes are kept.
+- The notes are written in the language the client asks for with each recording (the Huddle app
+  sends its notes language along); `HUDDLE_LANGUAGE` is the fallback.
+- Known-voice recognition is off on the server: voices are matched on each client, so one
+  account's voices never name speakers in another account's recordings.
 - `/v1` is authenticated with a client key (`hsk_…`, one per device, revocable) and scoped per
   client. `/mcp` takes MCP tokens (`hmt_…`) with the same scope. The dashboard uses a session
   cookie; two-factor authentication is TOTP.
@@ -107,7 +101,7 @@ scripts/fetch-engine.sh            # copies ../Huddle/engine (or clones it) into
 cd server && python3.11 -m venv .venv.nosync && .venv.nosync/bin/pip install -e ../vendor/engine -e ".[dev]"
 .venv.nosync/bin/python -m pytest
 cd ../dashboard && npm install && npm run build      # → server/huddle_server/static
-HUDDLE_DATA_DIR=/tmp/hs HUDDLE_TLS_DIR=/tmp/hs/certs HUDDLE_INSECURE_COOKIES=1 ../server/.venv.nosync/bin/huddle-server serve
+HUDDLE_DATA_DIR=/tmp/hs ../server/.venv.nosync/bin/huddle-server serve
 ```
 
 `npm run dev` in `dashboard/` serves the UI on :5180 and proxies the API to :48731.

@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Network } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import type { UserSettings } from "@/types/engine";
 import { Card, Input, Row, Select, Spinner, Switch } from "@/components/ui";
 
 const GB = 1024 ** 3;
-const LANGS: [string, string][] = [["auto", "Automatic (server language)"], ["en", "English"], ["nl", "Dutch"], ["de", "German"], ["fr", "French"], ["es", "Spanish"], ["it", "Italian"], ["pt", "Portuguese"], ["pl", "Polish"], ["sv", "Swedish"], ["da", "Danish"], ["no", "Norwegian"], ["fi", "Finnish"], ["tr", "Turkish"], ["ja", "Japanese"], ["zh", "Chinese"]];
 
 export function Settings({ onName }: { onName: (n: string) => void }) {
   const [s, setS] = useState<UserSettings | null>(null);
@@ -30,9 +28,6 @@ export function Settings({ onName }: { onName: (n: string) => void }) {
 
       <h3 className="mb-2 mt-6 font-display text-[11.5px] font-bold uppercase tracking-wider text-muted">Notes</h3>
       <Card>
-        <Row label="Language of the notes" hint="Transcripts keep the spoken language.">
-          <Select value={s["general.uiLanguage"]} onChange={(e) => update({ "general.uiLanguage": e.target.value })}>{LANGS.map(([c, l]) => <option key={c} value={c}>{l}</option>)}</Select>
-        </Row>
         <Row label="Action items with every summary"><Switch checked={!!s["notes.autoActionItems"]} onChange={(v) => update({ "notes.autoActionItems": v })} /></Row>
         <Row label="Name speakers from the conversation" hint="“Daan, kun jij…” → the next speaker is Daan."><Switch checked={s["speakers.inferNames"] !== false} onChange={(v) => update({ "speakers.inferNames": v })} /></Row>
       </Card>
@@ -53,7 +48,7 @@ export function Settings({ onName }: { onName: (n: string) => void }) {
 
       <h3 className="mb-2 mt-6 font-display text-[11.5px] font-bold uppercase tracking-wider text-muted">MCP</h3>
       <Card>
-        <Row label="MCP endpoint" hint="Always on at /mcp of the client address. Tokens are made per client and see what that client sees; manage them under Clients."><Network className="h-3.5 w-3.5 text-muted" /></Row>
+        <Row label="Endpoint" hint={`${window.location.origin}/mcp`}><span className="text-[12.5px] text-muted">Tokens under Clients</span></Row>
       </Card>
     </>
   );

@@ -1,11 +1,9 @@
 # Huddle Server. Copy .env.example to .env (or let install.sh do it), then: docker compose up -d
 #
-#   :${HUDDLE_PORT}            client API (/v1) and MCP (/mcp) — the port your Huddle app connects to
-#   :${HUDDLE_DASHBOARD_PORT}  the dashboard — forward it only if you need the dashboard from outside
-#
-# With HUDDLE_DOMAIN set, Caddy fetches a Let's Encrypt certificate (ports 80/443 must reach this host).
-# Without a domain, the server makes a self-signed certificate; its fingerprint is shown in the dashboard
-# and confirmed once in the Huddle app.
+# Plain HTTP on ${HUDDLE_PORT} (default 48731): dashboard, client API (/v1) and MCP (/mcp) on one port.
+# Put your own reverse proxy in front for TLS, or start the built-in one:
+#   COMPOSE_PROFILES=tls and HUDDLE_TLS_DIR=/certs in .env → Caddy on 443 (API + MCP) and 8443 (dashboard),
+#   with a Let's Encrypt certificate when HUDDLE_DOMAIN is set, otherwise the server's own certificate.
 
 services:
   huddle:
@@ -15,22 +13,37 @@ services:
     environment:
       HUDDLE_SERVER_NAME: ${HUDDLE_SERVER_NAME:-Huddle Server}
       HUDDLE_SYSTEM_LANGUAGE: ${HUDDLE_LANGUAGE:-en}
-      HUDDLE_OLLAMA_URL: ${HUDDLE_OLLAMA_URL:-http://ollama:11434}
+      HUDDLE_OLLAMA_URL: http://ollama:11434
       HUDDLE_SESSION_HOURS: ${HUDDLE_SESSION_HOURS:-72}
       HUDDLE_MAX_UPLOAD_MB: ${HUDDLE_MAX_UPLOAD_MB:-2048}
       HUDDLE_PUBLIC_URL: ${HUDDLE_PUBLIC_URL:-}
+      HUDDLE_TLS_DIR: ${HUDDLE_TLS_DIR:-}
+    ports:
+      - "${HUDDLE_PORT:-48731}:48731"
     volumes:
       - huddle-data:/data
       - certs:/certs
-    expose: ["48731"]
+    depends_on:
+      - ollama
 
+  # Notes with a local AI model. Download a model in the dashboard (Models); without one the
+  # server returns transcripts only and the Huddle app writes the notes itself.
+  ollama:
+    image: ollama/ollama
+    restart: unless-stopped
+    volumes:
+      - ollama:/root/.ollama
+    expose: ["11434"]
+
+  # Optional built-in TLS (profile "tls").
   caddy:
     image: caddy:2
     restart: unless-stopped
+    profiles: ["tls"]
     command: caddy run --config /etc/caddy/${HUDDLE_CADDYFILE:-Caddyfile.selfsigned} --adapter caddyfile
     ports:
-      - "${HUDDLE_PORT:-443}:443"
-      - "${HUDDLE_DASHBOARD_PORT:-8443}:8443"
+      - "${HUDDLE_TLS_PORT:-443}:443"
+      - "${HUDDLE_TLS_DASHBOARD_PORT:-8443}:8443"
       - "${HUDDLE_HTTP_PORT:-80}:80"
     environment:
       HUDDLE_DOMAIN: ${HUDDLE_DOMAIN:-}
@@ -40,18 +53,7 @@ services:
       - caddy-config:/config
       - certs:/certs:ro
     depends_on:
-      huddle:
-        condition: service_healthy
-
-  # Optional: notes with a local AI model. Start with `docker compose --profile ai up -d`, then
-  # download a model in the dashboard (Models). Needs ~6 GB of RAM for the recommended 4B model.
-  ollama:
-    image: ollama/ollama
-    restart: unless-stopped
-    profiles: ["ai"]
-    volumes:
-      - ollama:/root/.ollama
-    expose: ["11434"]
+      - huddle
 
 volumes:
   huddle-data:

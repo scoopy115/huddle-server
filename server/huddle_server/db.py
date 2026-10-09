@@ -81,6 +81,10 @@ SCHEMA = [
     );
     CREATE INDEX idx_mcp_tokens_client ON mcp_tokens(client_id);
     """),
+    (3, """
+    -- Whether the server writes AI notes for a client's recordings (an admin decides per client).
+    ALTER TABLE clients ADD COLUMN ai_enabled INTEGER NOT NULL DEFAULT 1;
+    """),
 ]
 
 

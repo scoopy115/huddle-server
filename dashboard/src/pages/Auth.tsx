@@ -3,13 +3,15 @@ import { useEffect, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import { Link } from "@/lib/router";
-import { BrandMark, Button, Input } from "@/components/ui";
+import { Button, Input } from "@/components/ui";
+import { Wordmark } from "@/components/Wordmark";
 
 function Frame({ name, title, children }: { name: string; title: string; children: React.ReactNode }) {
   return (
     <div className="flex h-full items-center justify-center p-6">
       <div className="panel w-full max-w-[380px] p-6">
-        <div className="mb-5 flex items-center gap-2"><BrandMark className="h-6 w-6 text-accent" /><div><div className="page-title">{name}</div><div className="text-[12px] text-muted">{title}</div></div></div>
+        <Wordmark className="mb-5 h-7 w-auto" />
+        <div className="mb-4"><div className="page-title">{title}</div><div className="text-[12px] text-muted">{name}</div></div>
         {children}
       </div>
     </div>
@@ -19,6 +21,7 @@ function Frame({ name, title, children }: { name: string; title: string; childre
 export function Setup({ name, onDone }: { name: string; onDone: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submit = async () => {
@@ -29,10 +32,11 @@ export function Setup({ name, onDone }: { name: string; onDone: () => void }) {
     <Frame name={name} title="Create the admin account">
       <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <Input type="email" placeholder="E-mail address" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
-        <Input type="password" placeholder="Password (at least 10 characters)" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <Input type="password" placeholder="Password (at least 10 characters)" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <Input type="password" placeholder="Repeat password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+        {confirm && confirm !== password && <div className="text-[12.5px] text-danger">The passwords differ.</div>}
         {error && <div className="text-[12.5px] text-danger">{error}</div>}
-        <Button type="submit" variant="primary" size="lg" loading={busy} disabled={!email || password.length < 10}>Create account</Button>
-        <p className="text-[11.5px] text-muted">Turn on two-factor authentication under Account afterwards.</p>
+        <Button type="submit" variant="primary" size="lg" loading={busy} disabled={!email || password.length < 10 || confirm !== password}>Create account</Button>
       </form>
     </Frame>
   );
@@ -41,6 +45,7 @@ export function Setup({ name, onDone }: { name: string; onDone: () => void }) {
 export function Register({ name, invite, onDone }: { name: string; invite?: string; onDone: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [valid, setValid] = useState<boolean | null>(invite ? null : true);
@@ -60,8 +65,10 @@ export function Register({ name, invite, onDone }: { name: string; invite?: stri
       <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <Input type="email" placeholder="E-mail address" autoFocus autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
         <Input type="password" placeholder="Password (at least 10 characters)" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <Input type="password" placeholder="Repeat password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+        {confirm && confirm !== password && <div className="text-[12.5px] text-danger">The passwords differ.</div>}
         {error && <div className="text-[12.5px] text-danger">{error}</div>}
-        <Button type="submit" variant="primary" size="lg" loading={busy} disabled={!email || password.length < 10 || valid === null}>Create account</Button>
+        <Button type="submit" variant="primary" size="lg" loading={busy} disabled={!email || password.length < 10 || confirm !== password || valid === null}>Create account</Button>
         {!invite && <p className="text-[11.5px] text-muted">An admin approves new accounts before they can log in.</p>}
         <Link to="/" className="text-[11.5px] text-muted hover:text-fg">Already have an account? Log in</Link>
       </form>

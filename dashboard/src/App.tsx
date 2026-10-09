@@ -13,6 +13,7 @@ import { MeetingPage } from "@/pages/Meeting";
 import { Models } from "@/pages/Models";
 import { Settings } from "@/pages/Settings";
 import { Account } from "@/pages/Account";
+import { Onboarding } from "@/pages/Onboarding";
 
 const NAV = [
   { to: "/", label: "Overview", icon: Activity, admin: true },
@@ -29,12 +30,14 @@ export function App() {
   const [me, setMe] = useState<Me | null | undefined>(undefined);
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   const [name, setName] = useState("Huddle Server");
+  const [onboarded, setOnboarded] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       const [s, m] = await Promise.all([api.setupState(), api.me()]);
       setNeedsSetup(s.needsSetup); setName(s.name); setMe(m); setError(null);
+      if (m.user?.role === "admin") setOnboarded((await api.onboarding()).completed); else setOnboarded(true);
     } catch (e) { setError(errorMessage(e)); setMe(null); }
   }, []);
   useEffect(() => { refresh(); }, [refresh]);
@@ -50,6 +53,7 @@ export function App() {
   }
 
   const isAdmin = me.user.role === "admin";
+  if (isAdmin && onboarded === false) return <Onboarding onDone={() => { setOnboarded(true); navigate("/"); }} />;
   const nav = NAV.filter((n) => isAdmin || !n.admin);
   const logout = async () => { await api.logout(); refresh(); navigate("/"); };
   const page = path.startsWith("/meetings/") ? <MeetingPage id={decodeURIComponent(path.slice("/meetings/".length))} me={me} />
@@ -78,8 +82,9 @@ export function App() {
         </ul>
         <div className="flex-1" />
         <div className="border-t border-border px-4 py-3 text-[12px] text-muted">
-          <div className="truncate">{me.user.email}{isAdmin ? " · admin" : ""}</div>
-          <button className="mt-1 inline-flex items-center gap-1 hover:text-fg" onClick={logout}><LogOut className="h-3 w-3" /> Log out</button>
+          <div className="truncate text-fg/80">{me.user.email}</div>
+          <div className="text-[11px]">{isAdmin ? "Admin" : "User"}</div>
+          <button className="mt-1.5 inline-flex items-center gap-1 hover:text-fg" onClick={logout}><LogOut className="h-3 w-3" /> Log out</button>
         </div>
       </nav>
       <main className="flex-1 overflow-y-auto">

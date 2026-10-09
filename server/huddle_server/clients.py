@@ -26,6 +26,7 @@ class Client:
     revoked: bool
     user_id: int | None
     scope: str = "own"            # own = its own uploads; all = every recording on the server
+    ai_enabled: bool = True       # the server writes notes for this client's recordings
     user_email: str | None = None
     meeting_count: int = 0
     token_count: int = 0
@@ -34,7 +35,7 @@ class Client:
     def public(self) -> dict:
         return {"id": self.id, "name": self.name, "prefix": self.prefix, "createdAt": self.created_at,
                 "lastSeenAt": self.last_seen_at, "lastVersion": self.last_version, "revoked": self.revoked,
-                "userId": self.user_id, "userEmail": self.user_email, "scope": self.scope,
+                "userId": self.user_id, "userEmail": self.user_email, "scope": self.scope, "aiEnabled": self.ai_enabled,
                 "meetingCount": self.meeting_count, "tokenCount": self.token_count, "key": self.key}
 
 
@@ -46,6 +47,7 @@ def _row(r, count: int = 0, tokens: int = 0) -> Client:
     return Client(id=r["id"], name=r["name"], prefix=r["prefix"], created_at=r["created_at"], last_seen_at=r["last_seen_at"],
                   last_version=r["last_version"], revoked=bool(r["revoked_at"]), user_id=r["user_id"],
                   scope=r["scope"] if r["scope"] in SCOPES else "own",
+                  ai_enabled=bool(r["ai_enabled"]) if "ai_enabled" in keys else True,
                   user_email=r["user_email"] if "user_email" in keys else None, meeting_count=count, token_count=tokens)
 
 
@@ -80,6 +82,10 @@ def list_clients(db: ServerDB, user_id: int | None = None) -> list[Client]:
 
 def rename(db: ServerDB, client_id: int, name: str) -> None:
     db.execute("UPDATE clients SET name = ? WHERE id = ?", ((name or "").strip()[:80] or "Client", client_id))
+
+
+def set_ai(db: ServerDB, client_id: int, enabled: bool) -> None:
+    db.execute("UPDATE clients SET ai_enabled = ? WHERE id = ?", (1 if enabled else 0, client_id))
 
 
 def set_scope(db: ServerDB, client_id: int, scope: str) -> None:

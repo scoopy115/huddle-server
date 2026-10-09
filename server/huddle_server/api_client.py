@@ -116,12 +116,33 @@ async def upload(request: Request, client: ClientDep, meta: Annotated[str, Form(
             duration_sec=float(m.get("durationSec") or 0), input_device=m.get("inputDevice"), sample_rate=m.get("sampleRate"),
             channels=m.get("channels"), format=fmt, title=(m.get("title") or None), language=(m.get("language") or None),
             speaker_count=(int(m["speakerCount"]) if m.get("speakerCount") else None),
-            mode=m.get("mode") if m.get("mode") in MODES else "meeting", source="recorded", process=False))
+            mode=m.get("mode") if m.get("mode") in MODES else "meeting", source="recorded", process=False,
+            notes_language=(str(m.get("notesLanguage") or "")[:8] or None)))
     if m.get("context"):
         ms.update_meeting(c.db, rid, context_html=str(m["context"])[:20000])
     clients.record_upload(sdb, client.id, rid, size)
-    c.jobs.enqueue(rid)
+    enqueue_for(client, rid)
     return _job_view(rid)
+
+
+def enqueue_for(client: Client, rid: str) -> None:
+    """Run the pipeline for a client's recording. With AI off for the client the notes stages are
+    marked skipped up front, so the job never waits on them and the dashboard shows why."""
+    import json
+    import time as _t
+    c = engine_ctx()
+    if client.ai_enabled:
+        c.jobs.enqueue(rid)
+        return
+    from huddle_engine.schemas import DEFAULT_PIPELINE, STAGES
+    names = [n for n in DEFAULT_PIPELINE if n != "summarizing"]
+    stages = {n: ({"status": "skipped", "detail": "AI notes are off for this client"} if n in ("summarizing", "extracting_actions")
+                  else {"status": "pending" if n in names else "skipped"}) for n in STAGES}
+    now = _t.time()
+    c.db.execute("INSERT INTO processing_jobs(meeting_id, state, current_stage, stages_json, error, error_detail, created_at, updated_at)"
+                 " VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(meeting_id) DO UPDATE SET stages_json=excluded.stages_json, updated_at=excluded.updated_at",
+                 (rid, "queued", None, json.dumps(stages), None, None, now, now))
+    c.jobs.enqueue(rid, names)
 
 
 def _owned(request: Request, client: Client, rid: str) -> None:
@@ -157,7 +178,7 @@ def result(request: Request, client: ClientDep, rid: str):
 @router.post("/recordings/{rid}/process")
 def reprocess(request: Request, client: ClientDep, rid: str):
     _owned(request, client, rid)
-    engine_ctx().jobs.enqueue(rid)
+    enqueue_for(client, rid)
     return _job_view(rid)
 
 

@@ -26,15 +26,15 @@ done
 if [ ! -f .env ]; then
   cp .env.example .env
   NAME="${HUDDLE_SERVER_NAME:-$(ask 'Server name' 'Huddle Server')}"
-  DOMAIN="${HUDDLE_DOMAIN:-$(ask 'Public domain (empty = self-signed certificate)' '')}"
-  PORT="${HUDDLE_PORT:-$(ask 'Port for the Huddle app' '443')}"
-  DPORT="${HUDDLE_DASHBOARD_PORT:-$(ask 'Port for the dashboard' '8443')}"
-  AI="${HUDDLE_AI:-$(ask 'Run an AI model for notes on this machine? (y/n)' 'n')}"
+  PORT="${HUDDLE_PORT:-$(ask 'Port (plain HTTP; put your reverse proxy in front)' '48731')}"
+  TLS="${HUDDLE_TLS:-$(ask 'Use the built-in TLS proxy instead? (y/n)' 'n')}"
   esc() { printf '%s' "$1" | sed 's/[&/\]/\\&/g'; }
-  sed -i.bak "s/^HUDDLE_SERVER_NAME=.*/HUDDLE_SERVER_NAME=$(esc "$NAME")/; s/^HUDDLE_DOMAIN=.*/HUDDLE_DOMAIN=$(esc "$DOMAIN")/; s/^HUDDLE_PORT=.*/HUDDLE_PORT=$PORT/; s/^HUDDLE_DASHBOARD_PORT=.*/HUDDLE_DASHBOARD_PORT=$DPORT/" .env
-  [ -n "$DOMAIN" ] && sed -i.bak "s/^HUDDLE_CADDYFILE=.*/HUDDLE_CADDYFILE=Caddyfile.domain/" .env
+  sed -i.bak "s/^HUDDLE_SERVER_NAME=.*/HUDDLE_SERVER_NAME=$(esc "$NAME")/; s/^HUDDLE_PORT=.*/HUDDLE_PORT=$PORT/" .env
+  case "$TLS" in y|Y|yes|1)
+    DOMAIN="${HUDDLE_DOMAIN:-$(ask 'Public domain for Let'"'"'s Encrypt (empty = self-signed)' '')}"
+    printf 'COMPOSE_PROFILES=tls\nHUDDLE_TLS_DIR=/certs\nHUDDLE_DOMAIN=%s\nHUDDLE_CADDYFILE=%s\n' "$DOMAIN" "$([ -n "$DOMAIN" ] && echo Caddyfile.domain || echo Caddyfile.selfsigned)" >> .env ;;
+  esac
   rm -f .env.bak
-  case "$AI" in y|Y|yes|1) printf 'COMPOSE_PROFILES=ai\n' >> .env ;; esac
 fi
 
 say "Starting Huddle Server in $DIR …"
@@ -46,8 +46,12 @@ HOST="${HUDDLE_DOMAIN:-$(hostname -I 2>/dev/null | awk '{print $1}' || hostname)
 [ -z "$HOST" ] && HOST="$(hostname)"
 say ""
 say "Huddle Server is starting."
-say "  Dashboard : https://$HOST:${HUDDLE_DASHBOARD_PORT:-8443}   (create your account there)"
-say "  App URL   : https://$HOST:${HUDDLE_PORT:-443}   (Huddle → Settings → Server)"
-[ -z "${HUDDLE_DOMAIN:-}" ] && say "  The certificate is self-signed: your browser warns once; the Huddle app asks you to confirm the fingerprint shown in the dashboard."
+if [ "${COMPOSE_PROFILES:-}" = "tls" ]; then
+  say "  Dashboard : https://$HOST:${HUDDLE_TLS_DASHBOARD_PORT:-8443}"
+  say "  App URL   : https://$HOST:${HUDDLE_TLS_PORT:-443}   (Huddle → Settings → Server)"
+  [ -z "${HUDDLE_DOMAIN:-}" ] && say "  Self-signed certificate: your browser warns once; the Huddle app asks you to confirm the fingerprint shown in the dashboard."
+else
+  say "  Dashboard and app URL : http://$HOST:${HUDDLE_PORT:-48731}"
+fi
 say ""
 say "Logs: cd $DIR && docker compose logs -f"

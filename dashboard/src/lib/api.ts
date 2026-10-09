@@ -39,13 +39,16 @@ export const errorMessage = (e: unknown) => (e instanceof Error ? e.message : St
 export type Role = "admin" | "user";
 export interface User { id: number; email: string; totpEnabled: boolean; role: Role; approved: boolean; createdAt: number; clientCount?: number }
 export interface Me { user: User | null; totpRequired: boolean; registration: "invite" | "open"; canSeeAll?: boolean }
-export interface Client { id: number; name: string; prefix: string; createdAt: number; lastSeenAt: number | null; lastVersion: string | null; revoked: boolean; userId: number | null; userEmail: string | null; scope: "own" | "all"; meetingCount: number; tokenCount: number; key: string | null }
+export interface Client { id: number; name: string; prefix: string; createdAt: number; lastSeenAt: number | null; lastVersion: string | null; revoked: boolean; userId: number | null; userEmail: string | null; scope: "own" | "all"; aiEnabled: boolean; meetingCount: number; tokenCount: number; key: string | null }
 export interface McpToken { id: number; clientId: number; clientName: string; name: string; prefix: string; createdAt: number; expiresAt: number | null; lastUsedAt: number | null; expired: boolean; revoked: boolean; scope: "own" | "all"; token: string | null; url?: string }
 export interface Invite { id: number; prefix: string; email: string | null; createdAt: number; expiresAt: number; used: boolean; expired: boolean; token?: string; url?: string }
+export interface SpeakerModels { installed: boolean; downloading: boolean; progress: number; error: string | null }
 export interface Overview {
   name: string; version: string; engineVersion: string; fingerprint: string | null; publicUrl: string;
   users: number; pendingUsers: number; mcpTokens: number; registration: "invite" | "open";
-  hardware: { os: string; osVersion: string; arch: string; cpuBrand: string | null; cpuCores: number; memoryBytes: number | null };
+  processed: number; processedMinutes: number; perDay: { date: string; meetings: number; minutes: number }[];
+  onboarded: boolean; speakerModels: SpeakerModels;
+  hardware: { os: string; osVersion: string; arch: string; cpuBrand: string | null; cpuCores: number; memoryBytes: number | null; gpu: string | null };
   capabilities: { transcription: string | null; diarization: boolean; llm: string | null };
   resolutions: Resolution[]; meetings: number; processing: number; activeJob: string | null; clients: number;
   recordingsBytes: number; maxBytes: number; retentionDays: number;
@@ -73,7 +76,11 @@ export const api = {
   deleteInvite: (id: number) => del<{ ok: boolean }>(`/api/invites/${id}`),
   clients: () => get<Client[]>("/api/clients"),
   createClient: (name: string) => post<Client>("/api/clients", { name }),
-  patchClient: (id: number, body: { name?: string; scope?: "own" | "all" }) => patch<Client>(`/api/clients/${id}`, body),
+  patchClient: (id: number, body: { name?: string; scope?: "own" | "all"; ai_enabled?: boolean }) => patch<Client>(`/api/clients/${id}`, body),
+  onboarding: () => get<{ completed: boolean }>("/api/onboarding"),
+  setOnboarding: (completed: boolean) => put<{ completed: boolean }>("/api/onboarding", { completed }),
+  speakerModels: () => get<SpeakerModels>("/api/setup/speaker-models"),
+  downloadSpeakerModels: () => post<SpeakerModels>("/api/setup/speaker-models"),
   revokeClient: (id: number) => post<{ ok: boolean }>(`/api/clients/${id}/revoke`),
   deleteClient: (id: number) => del<{ ok: boolean }>(`/api/clients/${id}`),
   clientTokens: (id: number) => get<McpToken[]>(`/api/clients/${id}/mcp-tokens`),

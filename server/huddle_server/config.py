@@ -19,8 +19,6 @@ class ServerConfig:
     tls_dir: Path | None = field(default_factory=lambda: Path(os.environ["HUDDLE_TLS_DIR"]) if os.getenv("HUDDLE_TLS_DIR") else None)
     # hours a dashboard session stays valid without activity
     session_hours: int = field(default_factory=lambda: int(os.getenv("HUDDLE_SESSION_HOURS", "72")))
-    # when the dashboard is served over plain http (local development only) cookies cannot be Secure
-    insecure_cookies: bool = field(default_factory=lambda: os.getenv("HUDDLE_INSECURE_COOKIES") == "1")
     # largest recording a client may send (a FLAC hour at 16 kHz mono is ~60 MB)
     max_upload_mb: int = field(default_factory=lambda: int(os.getenv("HUDDLE_MAX_UPLOAD_MB", "2048")))
     # public URL of this server as clients reach it (for links in the dashboard); derived from the request when empty

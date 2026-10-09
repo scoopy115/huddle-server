@@ -7,7 +7,6 @@ import pytest
 _TMP = Path(tempfile.mkdtemp(prefix="huddle-server-test-"))
 os.environ["HUDDLE_DATA_DIR"] = str(_TMP / "data")
 os.environ["HUDDLE_TLS_DIR"] = str(_TMP / "certs")
-os.environ["HUDDLE_INSECURE_COOKIES"] = "1"
 os.environ["HUDDLE_SERVER_NAME"] = "Test Server"
 os.environ["HUDDLE_NO_JOBS"] = ""   # jobs run (with fake stages)
 
