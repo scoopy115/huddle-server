@@ -33,7 +33,7 @@ PUBLIC_PREFIXES = ("/api/auth/invite/",)
 # Allowed while the second factor is still pending.
 TOTP_PENDING_OK = {"/api/auth/totp", "/api/auth/logout", "/api/auth/me"}
 # Admin only: everything that configures the server or looks at other accounts.
-ADMIN_PATHS = ("/engine", "/api/overview", "/api/server", "/api/users", "/api/invites")
+ADMIN_PATHS = ("/engine", "/api/overview", "/api/server", "/api/users", "/api/invites", "/api/processes")
 STATIC = Path(__file__).parent / "static"
 CSP = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; media-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 
@@ -146,12 +146,12 @@ def create_app(cfg: ServerConfig | None = None) -> FastAPI:
 
 
 def _server_engine_defaults(c) -> None:
-    """Engine settings that differ on a server: voices are recognised on the clients, never across
-    accounts here; the engine's own network MCP stays off (the server serves a scoped one)."""
+    """Engine settings that differ on a server: the engine's own network MCP stays off (the server
+    serves a scoped one). Known voices are per account (engine schema 12), so recognition stays on."""
     patch = {}
     s = c.settings()
-    if s.get("speakers.recognition", True):
-        patch["speakers.recognition"] = False
+    if not s.get("speakers.recognition", True):
+        patch["speakers.recognition"] = True
     if s.get("mcp.networkEnabled", False):
         patch["mcp.networkEnabled"] = False
     if patch:

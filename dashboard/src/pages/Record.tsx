@@ -44,6 +44,7 @@ export function Record() {
   const audioCtx = useRef<AudioContext | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const raf = useRef(0);
+  const lastSample = useRef(0);
 
   useEffect(() => {
     navigator.mediaDevices?.enumerateDevices().then((d) => setDevices(d.filter((x) => x.kind === "audioinput"))).catch(() => {});
@@ -58,7 +59,8 @@ export function Record() {
       if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
-      if (analyser.current && state === "recording") {
+      if (analyser.current && state === "recording" && performance.now() - lastSample.current >= 100) {
+        lastSample.current = performance.now();
         const buf = new Uint8Array(analyser.current.fftSize);
         analyser.current.getByteTimeDomainData(buf);
         let sum = 0;
@@ -155,16 +157,23 @@ export function Record() {
   const busy = state === "recording" || state === "paused";
   if (unsupported) return <div className="text-[13px] text-muted">This browser cannot record audio. Use a current Chrome, Safari, Firefox or Edge.</div>;
   return (
-    <div className="flex flex-col items-center gap-7 py-6">
-      <div className="text-center">
-        <div className="font-display text-[72px] font-bold leading-none tabular-nums tracking-tight">{fmtTime(elapsed)}</div>
-        <div className="mt-3 flex items-center justify-center gap-2 text-[13px] text-muted">
-          {state === "recording" ? <><span className="h-2 w-2 rounded-full bg-record animate-pulse" /> Recording</> : state === "paused" ? <><Pause className="h-3.5 w-3.5" /> Paused</> : state === "uploading" ? "Sending to the server…" : <><Mic className="h-3.5 w-3.5" /> Ready to record</>}
+    <div className="relative -mx-6 -my-6 flex min-h-full flex-col items-center gap-7 px-6 py-12">
+      <div className={cn("pointer-events-none absolute inset-0 transition-opacity duration-700 wash-accent", busy ? "opacity-100" : "opacity-60")} />
+      <div className="relative text-center">
+        {state === "recording" && (
+          <>
+            <span className="pointer-events-none absolute left-1/2 top-1/2 h-[220px] w-[220px] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-accent/40 animate-ring" />
+            <span className="pointer-events-none absolute left-1/2 top-1/2 h-[220px] w-[220px] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-accent/40 animate-ring [animation-delay:1.2s]" />
+          </>
+        )}
+        <div className="relative font-display text-[72px] font-bold leading-none tabular-nums tracking-tight">{fmtTime(elapsed)}</div>
+        <div className="relative mt-3 flex items-center justify-center gap-2 text-[13px] text-muted">
+          {state === "recording" ? <><span className="h-2 w-2 rounded-full bg-record animate-record" /> Recording</> : state === "paused" ? <><Pause className="h-3.5 w-3.5" /> Paused</> : state === "uploading" ? "Sending to the server…" : <><Mic className="h-3.5 w-3.5" /> Ready to record</>}
         </div>
       </div>
-      <canvas ref={canvas} className="h-[72px] w-full max-w-[560px]" />
+      <canvas ref={canvas} className="relative h-[72px] w-full max-w-[560px]" />
       {!busy ? (
-        <div className="panel flex w-full max-w-[460px] flex-col gap-3 p-4">
+        <div className="panel relative flex w-full max-w-[460px] flex-col gap-3 p-4">
           <label className="flex items-center justify-between gap-3 text-[13px]">
             <span className="inline-flex items-center gap-2 text-muted"><Mic className="h-3.5 w-3.5" /> Microphone</span>
             <Select value={device} onChange={(e) => setDevice(e.target.value)}>
@@ -200,7 +209,7 @@ export function Record() {
           <Button variant="record" size="lg" loading={state === "uploading"} onClick={start} className="mt-1 rounded-full"><span className="h-2.5 w-2.5 rounded-full bg-white" /> Start Recording</Button>
         </div>
       ) : (
-        <div className="flex items-center gap-2">
+        <div className="relative flex items-center gap-2">
           <Button variant="secondary" size="lg" onClick={togglePause} className="rounded-full px-6">{state === "paused" ? <><Play className="h-3.5 w-3.5 fill-current" /> Resume</> : <><Pause className="h-3.5 w-3.5 fill-current" /> Pause</>}</Button>
           <Button variant="primary" size="lg" onClick={stop} className="rounded-full px-7"><Square className="h-3.5 w-3.5 fill-current" /> Stop Recording</Button>
         </div>

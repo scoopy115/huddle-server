@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 /** Minimal history router: the server returns index.html for every path. */
 export function useRoute(): string {
   const [path, setPath] = useState(window.location.pathname);
+  const [, setSearch] = useState(window.location.search);
   useEffect(() => {
-    const onPop = () => setPath(window.location.pathname);
+    const onPop = () => { setPath(window.location.pathname); setSearch(window.location.search); };
     window.addEventListener("popstate", onPop);
     window.addEventListener("huddle:navigate", onPop);
     return () => { window.removeEventListener("popstate", onPop); window.removeEventListener("huddle:navigate", onPop); };
@@ -14,7 +15,7 @@ export function useRoute(): string {
 }
 
 export function navigate(path: string) {
-  if (path === window.location.pathname) return;
+  if (path === window.location.pathname + window.location.search) return;
   window.history.pushState({}, "", path);
   window.dispatchEvent(new Event("huddle:navigate"));
 }

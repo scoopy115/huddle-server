@@ -65,7 +65,7 @@ export function Settings({ onName }: { onName: (n: string) => void }) {
         </Row>
       </Card>
 
-      <h3 className="mb-2 mt-6 flex items-center gap-1.5 font-display text-[11.5px] font-bold uppercase tracking-wider text-muted">MCP <InfoTip text="Model Context Protocol: AI tools such as Claude Code, Claude Desktop or Cursor connect to this endpoint with a token and can then search and read the meetings that token may see. Tokens are made per client under Clients." /></h3>
+      <h3 className="mb-2 mt-6 flex items-center gap-1.5 font-display text-[11.5px] font-bold uppercase tracking-wider text-muted">MCP <span className="font-sans normal-case tracking-normal font-normal"><InfoTip text="Model Context Protocol: AI tools such as Claude Code, Claude Desktop or Cursor connect to this endpoint with a token and can then search and read the meetings that token may see. Tokens are made per client under Clients." /></span></h3>
       <Card>
         <Row label="Endpoint" hint={`${window.location.origin}/mcp`}><span className="text-[12.5px] text-muted">Tokens under Clients</span></Row>
         {tools.length > 0 && (

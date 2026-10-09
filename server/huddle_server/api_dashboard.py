@@ -7,8 +7,12 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
+from huddle_engine.schemas import CreateProjectRequest
+from huddle_engine.services import action_items as ai_svc
 from huddle_engine.services import meetings as ms
+from huddle_engine.services import projects as projects_svc
 from huddle_engine.services import search as search_svc
+from huddle_engine.services import transcripts
 from pydantic import BaseModel
 
 from . import __version__, access, auth, certs, clients, mcp_tokens
@@ -503,10 +507,11 @@ def list_meetings(request: Request, q: str | None = None, limit: int = 500):
 
 
 @router.get("/search")
-def search(request: Request, q: str, limit: int = 50):
+def search(request: Request, q: str, limit: int = 50, meeting_id: str | None = None, project_id: str | None = None):
     vis = _visible(request)
     c = engine_ctx()
-    hits = [h.model_dump(by_alias=True) for h in search_svc.search(c.db, q, limit=limit * (4 if vis is not None else 1)) if access.allowed(vis, h.meeting_id)]
+    hits = [h.model_dump(by_alias=True) for h in search_svc.search(c.db, q, limit=limit * (4 if vis is not None else 1), meeting_id=meeting_id, project_id=project_id)
+            if access.allowed(vis, h.meeting_id)]
     return hits[:limit]
 
 
@@ -518,6 +523,19 @@ def meeting_detail(request: Request, meeting_id: str):
     out["audioPath"] = ms.audio_path(c.db, c.cfg, meeting_id)
     out["ownerUserId"] = clients.owner_user_of_meeting(request.app.state.db, meeting_id)
     return out
+
+
+class MeetingPatch(BaseModel):
+    title: str | None = None
+
+
+@router.patch("/meetings/{meeting_id}")
+def patch_meeting(request: Request, meeting_id: str, body: MeetingPatch):
+    _meeting_or_404(request, meeting_id, write=True)
+    c = engine_ctx()
+    if body.title is not None:
+        ms.update_meeting(c.db, meeting_id, title=body.title)
+    return ms.get_meeting(c.db, meeting_id).model_dump(by_alias=True)
 
 
 @router.get("/meetings/{meeting_id}/audio")
@@ -649,3 +667,288 @@ def totp_disable(request: Request, body: Code):
     except auth.AuthError as e:
         raise HTTPException(400, str(e)) from None
     return {"ok": True}
+
+
+# ---- projects (per account) ----------------------------------------------------- #
+class ProjectBody(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    meeting_ids: list[str] = []
+
+
+class ProjectAssign(BaseModel):
+    project_id: str | None = None
+
+
+def _owner(request: Request) -> str:
+    return str(_session(request).user.id)
+
+
+def _project_or_404(request: Request, project_id: str):
+    p = projects_svc.get_project(engine_ctx().db, project_id)
+    if not p or p.owner != _owner(request):
+        raise HTTPException(404, "Project not found")
+    return p
+
+
+@router.get("/projects")
+def list_projects(request: Request):
+    return [p.model_dump(by_alias=True) for p in projects_svc.list_projects(engine_ctx().db, owner=_owner(request))]
+
+
+@router.post("/projects")
+def create_project(request: Request, body: ProjectBody):
+    vis = _visible(request)
+    ids = [m for m in body.meeting_ids if access.allowed(vis, m)]
+    try:
+        p = projects_svc.create(engine_ctx().db, CreateProjectRequest(name=body.name or "", description=body.description, meeting_ids=ids,
+                                                                      owner=_owner(request)))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    return p.model_dump(by_alias=True)
+
+
+@router.get("/projects/{project_id}")
+def project_detail(request: Request, project_id: str):
+    _project_or_404(request, project_id)
+    vis = _visible(request)
+    d = projects_svc.detail(engine_ctx().db, project_id)
+    out = d.model_dump(by_alias=True)
+    out["meetings"] = [m for m in out["meetings"] if access.allowed(vis, m["id"])]
+    out["suggested"] = [m for m in out["suggested"] if access.allowed(vis, m["id"])]
+    return out
+
+
+@router.patch("/projects/{project_id}")
+def update_project(request: Request, project_id: str, body: ProjectBody):
+    _project_or_404(request, project_id)
+    try:
+        p = projects_svc.update(engine_ctx().db, project_id, name=body.name, description=body.description)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    return p.model_dump(by_alias=True)
+
+
+@router.delete("/projects/{project_id}")
+def delete_project(request: Request, project_id: str):
+    _project_or_404(request, project_id)
+    projects_svc.delete(engine_ctx().db, project_id)
+    return {"ok": True}
+
+
+@router.put("/meetings/{meeting_id}/project")
+def set_meeting_project(request: Request, meeting_id: str, body: ProjectAssign):
+    _meeting_or_404(request, meeting_id, write=True)
+    if body.project_id:
+        _project_or_404(request, body.project_id)
+    projects_svc.assign(engine_ctx().db, meeting_id, body.project_id or None)
+    return ms.get_meeting(engine_ctx().db, meeting_id).model_dump(by_alias=True)
+
+
+@router.post("/meetings/{meeting_id}/project-suggestion")
+def suggest_project(request: Request, meeting_id: str):
+    _meeting_or_404(request, meeting_id, write=True)
+    c = engine_ctx()
+    from huddle_engine.jobs.stages import StageContext, _llm_provider
+    from huddle_engine.providers.summarize import LANG_NAMES
+    from huddle_engine.settings import resolve_notes_language
+    sc = StageContext(db=c.db, cfg=c.cfg, registry=c.registry, settings=c.settings(), meeting_id=meeting_id, memory_bytes=c.hardware.get("memoryBytes"))
+    try:
+        provider, _ = _llm_provider(sc)
+    except Exception:  # noqa: BLE001 — no model: lexical scores only
+        provider = None
+    code = resolve_notes_language(c.settings())
+    projects_svc.suggest(c.db, meeting_id, provider, language=LANG_NAMES.get(code, code))
+    return ms.get_meeting(c.db, meeting_id).model_dump(by_alias=True)
+
+
+@router.delete("/meetings/{meeting_id}/project-suggestion")
+def dismiss_project_suggestion(request: Request, meeting_id: str):
+    _meeting_or_404(request, meeting_id, write=True)
+    projects_svc.dismiss_suggestion(engine_ctx().db, meeting_id)
+    return ms.get_meeting(engine_ctx().db, meeting_id).model_dump(by_alias=True)
+
+
+# ---- speakers -------------------------------------------------------------------- #
+class RenameBody(BaseModel):
+    meeting_speaker_id: int
+    name: str
+    enroll: bool = True
+
+
+class ConfirmBody(BaseModel):
+    meeting_speaker_id: int
+
+
+class SegmentBody(BaseModel):
+    text: str | None = None
+    meeting_speaker_id: int | None = None
+
+
+def _speaker_meeting(request: Request, meeting_id: str, meeting_speaker_id: int) -> None:
+    _meeting_or_404(request, meeting_id, write=True)
+    r = engine_ctx().db.one("SELECT 1 FROM meeting_speakers WHERE id = ? AND meeting_id = ?", (meeting_speaker_id, meeting_id))
+    if not r:
+        raise HTTPException(404, "Speaker not found")
+
+
+@router.post("/meetings/{meeting_id}/speakers/rename")
+def rename_speaker(request: Request, meeting_id: str, body: RenameBody):
+    _speaker_meeting(request, meeting_id, body.meeting_speaker_id)
+    sp = transcripts.rename_speaker(engine_ctx().db, body.meeting_speaker_id, body.name, enroll=body.enroll)
+    return sp.model_dump(by_alias=True)
+
+
+@router.post("/meetings/{meeting_id}/speakers/confirm")
+def confirm_speaker(request: Request, meeting_id: str, body: ConfirmBody):
+    _speaker_meeting(request, meeting_id, body.meeting_speaker_id)
+    sp = transcripts.confirm_suggestion(engine_ctx().db, body.meeting_speaker_id)
+    if not sp:
+        raise HTTPException(404, "Suggestion not found")
+    return sp.model_dump(by_alias=True)
+
+
+@router.post("/meetings/{meeting_id}/speakers/{source_id}/merge-into/{target_id}")
+def merge_speakers(request: Request, meeting_id: str, source_id: int, target_id: int):
+    _speaker_meeting(request, meeting_id, source_id)
+    _speaker_meeting(request, meeting_id, target_id)
+    transcripts.merge_speakers(engine_ctx().db, source_id, target_id)
+    return [sp.model_dump(by_alias=True) for sp in transcripts.speakers(engine_ctx().db, meeting_id)]
+
+
+@router.patch("/segments/{segment_id}")
+def update_segment(request: Request, segment_id: int, body: SegmentBody):
+    r = engine_ctx().db.one("SELECT meeting_id FROM transcript_segments WHERE id = ?", (segment_id,))
+    if not r:
+        raise HTTPException(404, "Segment not found")
+    _meeting_or_404(request, r["meeting_id"], write=True)
+    sp = transcripts.update_segment(engine_ctx().db, segment_id, body.text, body.meeting_speaker_id)
+    return sp.model_dump(by_alias=True)
+
+
+@router.get("/speakers")
+def known_speakers(request: Request):
+    return transcripts.known_speakers(engine_ctx().db, owner=_owner(request))
+
+
+@router.delete("/speakers/{speaker_id}")
+def delete_known_speaker(request: Request, speaker_id: int):
+    r = engine_ctx().db.one("SELECT owner FROM speakers WHERE id = ?", (speaker_id,))
+    if not r or r["owner"] != _owner(request):
+        raise HTTPException(404, "Speaker not found")
+    transcripts.delete_known_speaker(engine_ctx().db, speaker_id)
+    return {"ok": True}
+
+
+# ---- action items ----------------------------------------------------------------- #
+class ActionItemBody(BaseModel):
+    text: str | None = None
+    owner: str | None = None
+    due_date: str | None = None
+    done: bool | None = None
+
+
+@router.get("/action-items")
+def action_items(request: Request, open_only: bool = False, project_id: str | None = None):
+    vis = _visible(request)
+    if project_id:
+        _project_or_404(request, project_id)
+    return [a.model_dump(by_alias=True) for a in ai_svc.list_all(engine_ctx().db, open_only=open_only, project_id=project_id, limit=2000)
+            if access.allowed(vis, a.meeting_id)]
+
+
+def _item_or_404(request: Request, item_id: int):
+    a = ai_svc.get(engine_ctx().db, item_id)
+    if not a:
+        raise HTTPException(404, "Action item not found")
+    _meeting_or_404(request, a.meeting_id, write=True)
+    return a
+
+
+@router.post("/meetings/{meeting_id}/action-items")
+def create_action_item(request: Request, meeting_id: str, body: ActionItemBody):
+    _meeting_or_404(request, meeting_id, write=True)
+    return ai_svc.create(engine_ctx().db, meeting_id, body.text or "", body.owner, body.due_date).model_dump(by_alias=True)
+
+
+@router.patch("/action-items/{item_id}")
+def update_action_item(request: Request, item_id: int, body: ActionItemBody):
+    _item_or_404(request, item_id)
+    fields = body.model_dump(exclude_unset=True)
+    a = ai_svc.update(engine_ctx().db, item_id, text=body.text, owner=body.owner, due_date=body.due_date, done=body.done,
+                      clear_owner="owner" in fields and body.owner is None, clear_due="due_date" in fields and body.due_date is None)
+    return a.model_dump(by_alias=True)
+
+
+@router.delete("/action-items/{item_id}")
+def delete_action_item(request: Request, item_id: int):
+    _item_or_404(request, item_id)
+    ai_svc.delete(engine_ctx().db, item_id)
+    return {"ok": True}
+
+
+@router.post("/meetings/{meeting_id}/action-items/generate")
+def generate_action_items(request: Request, meeting_id: str):
+    _meeting_or_404(request, meeting_id, write=True)
+    engine_ctx().jobs.enqueue(meeting_id, ["extracting_actions"])
+    return {"ok": True}
+
+
+# ---- notes, questions, processes ---------------------------------------------------- #
+class RefineBody(BaseModel):
+    context_html: str
+
+
+class AskBody(BaseModel):
+    question: str
+    project_id: str | None = None
+
+
+@router.post("/meetings/{meeting_id}/refine")
+def refine_meeting(request: Request, meeting_id: str, body: RefineBody):
+    _meeting_or_404(request, meeting_id, write=True)
+    c = engine_ctx()
+    ms.update_meeting(c.db, meeting_id, context_html=body.context_html)
+    has_auto = bool(c.db.one("SELECT 1 FROM action_items WHERE meeting_id = ? AND source = 'auto'", (meeting_id,)))
+    c.jobs.enqueue(meeting_id, ["refining", "summarizing", *(["extracting_actions"] if has_auto else []), "indexing"])
+    return {"ok": True}
+
+
+def _llm_or_none():
+    from huddle_engine.app import _llm
+    return _llm()
+
+
+@router.post("/meetings/{meeting_id}/ask")
+def ask_meeting(request: Request, meeting_id: str, body: AskBody):
+    _meeting_or_404(request, meeting_id)
+    from huddle_engine.app import _ui_language
+    from huddle_engine.services import ask as ask_svc
+    return ask_svc.ask(engine_ctx().db, _llm_or_none(), body.question, meeting_id=meeting_id, language=_ui_language())
+
+
+@router.post("/ask")
+def ask_all(request: Request, body: AskBody):
+    """Across all recordings the account may see; a project keeps the question inside that project."""
+    s = _session(request)
+    from huddle_engine.app import _ui_language
+    from huddle_engine.services import ask as ask_svc
+    if body.project_id:
+        _project_or_404(request, body.project_id)
+    elif _visible(request) is not None:
+        raise HTTPException(403, "Asking across every recording needs access to all recordings; ask within a project or a meeting")
+    _ = s
+    return ask_svc.ask(engine_ctx().db, _llm_or_none(), body.question, language=_ui_language(), project_id=body.project_id or None)
+
+
+@router.get("/search/meetings")
+def search_meetings(request: Request, q: str, limit: int = 20, project_id: str | None = None):
+    vis = _visible(request)
+    out = search_svc.search_meetings(engine_ctx().db, q, limit=limit * (4 if vis is not None else 1), project_id=project_id)
+    return [c for c in out if access.allowed(vis, c.get("meetingId"))][:limit]
+
+
+@router.get("/processes")
+def processes(request: Request):
+    from huddle_engine.app import processes as engine_processes
+    return engine_processes()

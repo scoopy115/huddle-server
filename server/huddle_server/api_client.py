@@ -124,7 +124,7 @@ async def store_upload(request: Request, client: Client, m: dict, audio: UploadF
             channels=m.get("channels"), format=fmt, title=(m.get("title") or None), language=(m.get("language") or None),
             speaker_count=(int(m["speakerCount"]) if m.get("speakerCount") else None),
             mode=m.get("mode") if m.get("mode") in MODES else "meeting", source="recorded", process=False,
-            notes_language=(str(m.get("notesLanguage") or "")[:8] or None)))
+            notes_language=(str(m.get("notesLanguage") or "")[:8] or None), owner=str(client.user_id or "")))
     if m.get("context"):
         ms.update_meeting(c.db, rid, context_html=str(m["context"])[:20000])
     clients.record_upload(sdb, client.id, rid, size)

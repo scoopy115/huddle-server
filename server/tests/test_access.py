@@ -199,3 +199,38 @@ def test_browser_recording_and_account_name(admin):
     assert browser["meetingCount"] >= 1 and browser["key"] is None
     tools = a.get("/api/mcp/tools").json()
     assert any(t["name"] == "search_transcripts" for t in tools)
+
+
+def test_projects_speakers_and_action_items_are_per_account(admin):
+    a = admin
+    u = _second_client(a)
+    inv = a.post("/api/invites", json={}, headers=H).json()
+    u.post("/api/auth/register", json={"name": "Pat", "email": "pat@example.com", "password": "ten chars long!", "invite": inv["token"]}, headers=H)
+    pk = u.post("/api/clients", json={"name": "Pat's Mac"}, headers=H).json()
+    _upload(u, {"Authorization": f"Bearer {pk['key']}"}, "pat-rec-00000001", "Pat's recording")
+
+    # projects live per account; meetings are filed only by their owner
+    p = u.post("/api/projects", json={"name": "Garden"}, headers=H).json()
+    assert u.get("/api/projects").json()[0]["name"] == "Garden"
+    assert all(x["name"] != "Garden" for x in a.get("/api/projects").json())
+    assert a.get(f"/api/projects/{p['id']}").status_code == 404
+    assert u.put("/api/meetings/pat-rec-00000001/project", json={"project_id": p["id"]}, headers=H).json()["projectId"] == p["id"]
+    assert [m["id"] for m in u.get(f"/api/projects/{p['id']}").json()["meetings"]] == ["pat-rec-00000001"]
+    assert u.post("/api/projects", json={"name": "garden"}, headers=H).status_code == 400     # same name, same account
+    assert a.post("/api/projects", json={"name": "Garden"}, headers=H).status_code == 200      # another account may reuse it
+
+    # naming a speaker enrols the voice for this account only
+    d = u.get("/api/meetings/pat-rec-00000001").json()
+    sp = d["speakers"][0]
+    r = u.post("/api/meetings/pat-rec-00000001/speakers/rename", json={"meeting_speaker_id": sp["id"], "name": "Pat", "enroll": True}, headers=H)
+    assert r.status_code == 200 and r.json()["displayName"] == "Pat"
+    assert [v["name"] for v in u.get("/api/speakers").json()] == ["Pat"]
+    assert all(v["name"] != "Pat" for v in a.get("/api/speakers").json())
+    assert a.post("/api/meetings/pat-rec-00000001/speakers/rename", json={"meeting_speaker_id": sp["id"], "name": "X"}, headers=H).status_code in (200, 403)
+
+    # action items follow visibility
+    it = u.post("/api/meetings/pat-rec-00000001/action-items", json={"text": "Water the plants"}, headers=H).json()
+    assert any(x["id"] == it["id"] for x in u.get("/api/action-items").json())
+    assert u.patch(f"/api/action-items/{it['id']}", json={"done": True}, headers=H).json()["done"] is True
+    assert a.get("/api/processes").status_code == 200 and u.get("/api/processes").status_code == 403
+    assert u.post("/api/ask", json={"question": "anything"}, headers=H).status_code == 403
