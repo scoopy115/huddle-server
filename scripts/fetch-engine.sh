@@ -12,7 +12,7 @@ mkdir -p "$ROOT/vendor"
 if [ "$MODE" != "--git" ] && [ -d "$ROOT/../Huddle/engine/huddle_engine" ]; then
   echo "engine ← ../Huddle/engine"
   rsync -a --delete --exclude '.venv*' --exclude 'dist.nosync' --exclude 'build.nosync' --exclude '__pycache__' \
-    --exclude '*.spec' --exclude '.pytest_cache' "$ROOT/../Huddle/engine/" "$ROOT/vendor/engine/"
+    --exclude '*.spec' --exclude '*.egg-info' --exclude '.pytest_cache' "$ROOT/../Huddle/engine/" "$ROOT/vendor/engine/"
 else
   echo "engine ← $REPO@$REF (engine/)"
   tmp="$(mktemp -d)"
