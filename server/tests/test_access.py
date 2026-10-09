@@ -61,6 +61,10 @@ def test_invite_flow_and_user_boundary(admin):
     k = u.post("/api/clients", json={"name": "Friend's Mac"}, headers=H).json()
     assert k["scope"] == "own"
     assert u.patch(f"/api/clients/{k['id']}", json={"scope": "all"}, headers=H).status_code == 403
+    assert u.patch(f"/api/clients/{k['id']}", json={"ai_enabled": False}, headers=H).json()["aiEnabled"] is False   # the owner decides
+    assert "transcription" in u.get("/api/capabilities").json()
+    assert u.get("/api/auth/me").json()["user"]["totpPrompted"] is False
+    assert u.post("/api/account/totp-prompted", headers=H).status_code == 200 and u.get("/api/auth/me").json()["user"]["totpPrompted"] is True
     assert u.patch(f"/api/clients/{k['id']}", json={"name": "Renamed"}, headers=H).json()["name"] == "Renamed"
     # the admin sees it with its owner; the user sees only their own
     assert any(c["id"] == k["id"] and c["userEmail"] == "friend@example.com" for c in a.get("/api/clients").json())
@@ -169,8 +173,9 @@ def test_mcp_tokens_follow_the_client_scope(admin):
     wide_seg = _mcp_call(a, t_wide["token"], "get_transcript", {"meeting_id": "wide-rec-00000001"})[0]["segmentId"]
     assert "error" in json.dumps(_mcp_call(a, t_own["token"], "get_transcript_context", {"segment_id": wide_seg})).lower()
 
-    # revoking the client silences its tokens; deleting a token works from the desktop too
+    # revoking the client revokes its tokens; deleting a token works from the desktop too
     a.post(f"/api/clients/{wide['id']}/revoke", headers=H)
+    assert all(t["revoked"] for t in a.get(f"/api/clients/{wide['id']}/mcp-tokens").json())
     r = a.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, headers={"Authorization": f"Bearer {t_wide['token']}", "Accept": "application/json, text/event-stream"})
     assert r.status_code == 401
     assert a.delete(f"/v1/mcp-tokens/{t_own['id']}", headers={"Authorization": f"Bearer {own['key']}"}).json()["ok"] is True

@@ -434,9 +434,7 @@ def patch_client(request: Request, client_id: int, body: ClientPatch):
         except ValueError as e:
             raise HTTPException(400, str(e)) from None
     if body.ai_enabled is not None:
-        if not s.user.is_admin:
-            raise HTTPException(403, "Only an admin changes whether a client gets AI notes")
-        clients.set_ai(db, c.id, body.ai_enabled)
+        clients.set_ai(db, c.id, body.ai_enabled)      # the owner decides too
     return clients.get(db, c.id).public()
 
 
@@ -589,6 +587,20 @@ async def record(request: Request, meta: Annotated[str, Form()], audio: Annotate
 @router.get("/mcp/tools")
 def mcp_tools(request: Request):
     return request.app.state.mcp_tools
+
+
+@router.get("/capabilities")
+def caps(request: Request):
+    """What the server can do right now, for every account (decides which options the dashboard shows)."""
+    _session(request)
+    return capabilities()
+
+
+@router.post("/account/totp-prompted")
+def totp_prompted(request: Request):
+    s = _session(request)
+    auth.mark_totp_prompted(request.app.state.db, s.user.id)
+    return {"ok": True}
 
 
 # ---- account ------------------------------------------------------------------- #

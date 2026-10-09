@@ -12,6 +12,7 @@ export function Users({ meId }: { meId: number }) {
   const [error, setError] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const [fresh, setFresh] = useState<Invite | null>(null);
   const [resetting, setResetting] = useState<User | null>(null);
   const [newPw, setNewPw] = useState("");
@@ -34,7 +35,7 @@ export function Users({ meId }: { meId: number }) {
     <>
       <div className="mb-4 flex items-center justify-between">
         <h2 className="font-display text-[22px] font-bold tracking-tight">Users</h2>
-        <Button variant="primary" onClick={() => { setInviteEmail(""); setInviting(true); }}><Plus className="h-3.5 w-3.5" /> Invite</Button>
+        <Button variant="primary" onClick={() => { setInviteEmail(""); setInviteError(null); setInviting(true); }}><Plus className="h-3.5 w-3.5" /> Invite</Button>
       </div>
       {error && <div className="mb-3 text-[12.5px] text-danger">{error}</div>}
 
@@ -89,9 +90,10 @@ export function Users({ meId }: { meId: number }) {
       </Card>
 
       <Dialog open={inviting} onClose={() => setInviting(false)} title="Invite someone"
-        footer={<><Button variant="ghost" onClick={() => setInviting(false)}>Cancel</Button><Button variant="primary" onClick={async () => { try { const inv = await api.createInvite(inviteEmail.trim() || undefined); setInviting(false); setFresh(inv); load(); } catch (e) { setError(errorMessage(e)); } }}><Link2 className="h-3.5 w-3.5" /> Create link</Button></>}>
+        footer={<><Button variant="ghost" onClick={() => setInviting(false)}>Cancel</Button><Button variant="primary" onClick={async () => { setInviteError(null); try { const inv = await api.createInvite(inviteEmail.trim() || undefined); setInviting(false); setFresh(inv); load(); } catch (e) { setInviteError(errorMessage(e)); } }}><Link2 className="h-3.5 w-3.5" /> Create link</Button></>}>
         <label className="block text-[12px] text-muted">E-mail address <span className="text-muted/70">— optional, binds the link to that address</span></label>
         <Input autoFocus className="mt-1" type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} />
+        {inviteError && <div className="mt-2 text-[12.5px] text-danger">{inviteError}</div>}
         <p className="mt-2 text-[11.5px] text-muted">Valid once, 7 days.</p>
       </Dialog>
 

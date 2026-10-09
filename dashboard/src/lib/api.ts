@@ -37,7 +37,8 @@ const del = <T>(p: string) => call<T>("DELETE", p);
 export const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export type Role = "admin" | "user";
-export interface User { id: number; email: string; name: string; totpEnabled: boolean; role: Role; approved: boolean; createdAt: number; clientCount?: number }
+export interface User { id: number; email: string; name: string; totpEnabled: boolean; role: Role; approved: boolean; createdAt: number; totpPrompted?: boolean; clientCount?: number }
+export interface Capabilities { transcription: string | null; diarization: boolean; llm: string | null }
 export interface Me { user: User | null; totpRequired: boolean; registration: "invite" | "open"; canSeeAll?: boolean }
 export interface Client { id: number; name: string; kind: "device" | "browser"; prefix: string; createdAt: number; lastSeenAt: number | null; lastVersion: string | null; revoked: boolean; userId: number | null; userEmail: string | null; scope: "own" | "all"; aiEnabled: boolean; meetingCount: number; tokenCount: number; key: string | null }
 export interface McpToken { id: number; clientId: number; clientName: string; name: string; prefix: string; createdAt: number; expiresAt: number | null; lastUsedAt: number | null; expired: boolean; revoked: boolean; scope: "own" | "all"; token: string | null; url?: string }
@@ -62,6 +63,8 @@ export const api = {
   register: (name: string, email: string, password: string, invite?: string) => post<Me & { pending: boolean }>("/api/auth/register", { name, email, password, invite }),
   updateAccount: (name: string) => patch<User>("/api/account", { name }),
   mcpTools: () => get<{ name: string; description: string }[]>("/api/mcp/tools"),
+  capabilities: () => get<Capabilities>("/api/capabilities"),
+  markTotpPrompted: () => post<{ ok: boolean }>("/api/account/totp-prompted"),
   record: async (meta: Record<string, unknown>, blob: Blob, filename: string) => {
     const fd = new FormData();
     fd.append("meta", JSON.stringify(meta));

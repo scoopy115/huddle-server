@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
-import { Clock, Search, Timer, Users } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Clock, Search, Timer, Upload, Users } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import type { Meeting } from "@/types/engine";
 import { fmtClock, fmtDuration, fmtRelativeDay } from "@/lib/format";
-import { Link } from "@/lib/router";
-import { Badge, Input, Spinner } from "@/components/ui";
+import { Link, navigate } from "@/lib/router";
+import { Badge, Button, Input, Spinner } from "@/components/ui";
 
 const STAGE_WORD: Record<string, string> = { preprocessing: "Preparing audio", transcribing: "Transcribing", diarizing: "Detecting speakers", identifying_speakers: "Checking voices", summarizing: "Writing notes", indexing: "Indexing" };
 
@@ -19,6 +19,19 @@ export function Meetings() {
   const [list, setList] = useState<Meeting[] | null>(null);
   const [q, setQ] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const file = useRef<HTMLInputElement>(null);
+  const importFile = async (f: File) => {
+    setImporting(true); setError(null);
+    try {
+      const ext = (f.name.split(".").pop() || "wav").toLowerCase();
+      const d = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const id = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-imp${Math.random().toString(16).slice(2, 8)}`;
+      const res = await api.record({ id, startedAt: f.lastModified / 1000, durationSec: 0, format: ext, title: f.name.replace(/\.[^.]+$/, ""), inputDevice: "Imported file" }, f, f.name);
+      navigate(`/meetings/${encodeURIComponent(res.id)}`);
+    } catch (e) { setError(errorMessage(e)); } finally { setImporting(false); }
+  };
   useEffect(() => {
     const load = () => api.meetings(q.trim() || undefined).then(setList).catch((e) => setError(errorMessage(e)));
     load();
@@ -35,10 +48,14 @@ export function Meetings() {
     <>
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="font-display text-[22px] font-bold tracking-tight">Meetings</h2>
-        <div className="relative w-[260px]"><Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" /><Input className="pl-8" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <div className="flex items-center gap-2">
+          <div className="relative w-[240px]"><Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" /><Input className="pl-8" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <input ref={file} type="file" accept=".wav,.mp3,.m4a,.mp4,.webm,.flac,.ogg,audio/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importFile(f); e.target.value = ""; }} />
+          <Button loading={importing} onClick={() => file.current?.click()}><Upload className="h-3.5 w-3.5" /> Import</Button>
+        </div>
       </div>
       {error && <div className="mb-3 text-[12.5px] text-danger">{error}</div>}
-      {!list ? <Spinner /> : list.length === 0 ? <div className="text-[13px] text-muted">No meetings yet. They appear here when a Huddle app sends a recording.</div> : groups.map((g) => (
+      {!list ? <Spinner /> : list.length === 0 ? <div className="text-[13px] text-muted">No meetings yet.</div> : groups.map((g) => (
         <section key={g.label} className="mb-5">
           <h3 className="mb-2 font-display text-[11.5px] font-bold uppercase tracking-wider text-muted">{g.label}</h3>
           <div className="panel">

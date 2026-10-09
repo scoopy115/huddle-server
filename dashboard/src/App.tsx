@@ -3,7 +3,8 @@ import { Activity, FileAudio, KeyRound, LogOut, Mic, Settings as SettingsIcon, S
 import { api, errorMessage, setUnauthorizedHandler, type Me } from "@/lib/api";
 import { Link, navigate, useRoute } from "@/lib/router";
 import { cn } from "@/lib/utils";
-import { BrandMark, Spinner } from "@/components/ui";
+import { BrandMark, Button, Dialog, Spinner } from "@/components/ui";
+import { ShieldCheck } from "lucide-react";
 import { Login, Register, Setup } from "@/pages/Auth";
 import { Users } from "@/pages/Users";
 import { Overview } from "@/pages/Overview";
@@ -33,6 +34,7 @@ export function App() {
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   const [name, setName] = useState("Huddle Server");
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
+  const [totpAsk, setTotpAsk] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -56,6 +58,8 @@ export function App() {
 
   const isAdmin = me.user.role === "admin";
   if (isAdmin && onboarded === false) return <Onboarding onDone={() => { setOnboarded(true); navigate("/"); }} />;
+  const askTotp = !me.user.totpEnabled && me.user.totpPrompted === false && !totpAsk;
+  const dismissTotp = async () => { setTotpAsk(true); await api.markTotpPrompted().catch(() => {}); };
   const nav = NAV.filter((n) => isAdmin || !n.admin);
   const logout = async () => { await api.logout(); refresh(); navigate("/"); };
   const page = path.startsWith("/meetings/") ? <MeetingPage id={decodeURIComponent(path.slice("/meetings/".length))} me={me} />
@@ -93,6 +97,10 @@ export function App() {
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[860px] px-6 py-6">{page}</div>
       </main>
+      <Dialog open={askTotp} onClose={dismissTotp} title="Protect this account?" width={440}
+        footer={<><Button variant="ghost" onClick={dismissTotp}>Later</Button><Button variant="primary" onClick={async () => { await dismissTotp(); navigate("/account?totp=1"); }}><ShieldCheck className="h-3.5 w-3.5" /> Set up now</Button></>}>
+        <p className="text-muted">Two-factor authentication asks for a code from an authenticator app at every login. It takes a minute to set up under Account.</p>
+      </Dialog>
     </div>
   );
 }

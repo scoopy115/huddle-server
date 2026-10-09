@@ -1,29 +1,30 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, ChevronDown, Clock, Copy, Eye, Globe, HelpCircle, KeyRound, Mic, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
-import { api, errorMessage, type Client, type McpToken } from "@/lib/api";
+import { Check, ChevronDown, Clock, Copy, Eye, Globe, HelpCircle, KeyRound, Mic, Pencil, Plus, Trash2 } from "lucide-react";
+import { api, errorMessage, type Capabilities, type Client, type McpToken } from "@/lib/api";
 import { fmtDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useCopy } from "@/pages/Overview";
-import { Badge, Button, Card, DangerDialog, Dialog, Input, Row, Select } from "@/components/ui";
+import { Badge, Button, Card, DangerDialog, Dialog, Input, Select } from "@/components/ui";
 
 export function Clients({ isAdmin }: { isAdmin: boolean }) {
-  const [list, setList] = useState<Client[]>([]);
+  const [list, setList] = useState<Client[] | null>(null);
+  const [caps, setCaps] = useState<Capabilities | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [fresh, setFresh] = useState<Client | null>(null);
   const [renaming, setRenaming] = useState<Client | null>(null);
   const [deleting, setDeleting] = useState<Client | null>(null);
+  const [revoking, setRevoking] = useState<Client | null>(null);
   const [open, setOpen] = useState<number | null>(null);
   const [explain, setExplain] = useState(false);
-  const [revoking, setRevoking] = useState<Client | null>(null);
   const { copied, copy } = useCopy();
   const load = useCallback(() => api.clients().then(setList).catch((e) => setError(errorMessage(e))), []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); api.capabilities().then(setCaps).catch(() => {}); }, [load]);
   const act = async (fn: () => Promise<unknown>) => { try { await fn(); await load(); } catch (e) { setError(errorMessage(e)); } };
-
   const create = async () => { try { const c = await api.createClient(name.trim() || "Mac"); setCreating(false); setFresh(c); load(); } catch (e) { setError(errorMessage(e)); } };
-  const groups = isAdmin ? Array.from(list.reduce((m, c) => m.set(c.userEmail ?? "—", [...(m.get(c.userEmail ?? "—") ?? []), c]), new Map<string, Client[]>())) : [["", list] as [string, Client[]]];
+  const ai = !!caps?.llm;    // without an AI model on the server there is nothing to switch on
+  const groups = !list ? [] : isAdmin ? Array.from(list.reduce((m, c) => m.set(c.userEmail ?? "—", [...(m.get(c.userEmail ?? "—") ?? []), c]), new Map<string, Client[]>())) : [["", list] as [string, Client[]]];
 
   return (
     <>
@@ -32,31 +33,47 @@ export function Clients({ isAdmin }: { isAdmin: boolean }) {
         <Button variant="primary" onClick={() => { setName(""); setCreating(true); }}><Plus className="h-3.5 w-3.5" /> New client key</Button>
       </div>
       {error && <div className="mb-3 text-[12.5px] text-danger">{error}</div>}
-      {list.length === 0 && <Card><div className="px-4 py-6 text-center text-[13px] text-muted">No clients yet.</div></Card>}
+      {list && list.length === 0 && <Card><div className="px-4 py-6 text-center text-[13px] text-muted">No clients yet.</div></Card>}
       {groups.map(([email, items]) => (
         <section key={email} className="mb-4">
           {isAdmin && <h3 className="mb-2 font-display text-[11.5px] font-bold uppercase tracking-wider text-muted">{email}</h3>}
           <Card>
             {items.map((c) => (
-              <div key={c.id}>
-                <Row label={c.name} hintNode={<span className="flex flex-wrap gap-3">{c.kind === "browser" ? <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" />Recorder in this dashboard</span> : <span className="inline-flex items-center gap-1 font-mono"><KeyRound className="h-3 w-3" />{c.prefix}…</span>}<span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{c.lastSeenAt ? `last seen ${fmtDate(c.lastSeenAt)}${c.lastVersion ? ` · Huddle ${c.lastVersion}` : ""}` : "never connected"}</span><span className="inline-flex items-center gap-1"><Mic className="h-3 w-3" />{c.meetingCount} meeting{c.meetingCount === 1 ? "" : "s"}</span><button className="inline-flex items-center gap-1 hover:text-fg" onClick={() => setOpen(open === c.id ? null : c.id)}>{c.tokenCount} MCP token{c.tokenCount === 1 ? "" : "s"} <ChevronDown className={cn("h-3 w-3 transition-transform", open === c.id && "rotate-180")} /></button></span>}>
-                  {c.revoked ? <Badge tone="bad">Revoked</Badge> : isAdmin ? (
-                    <>
-                      <Select className="!w-[150px]" value={c.aiEnabled ? "on" : "off"} onChange={(e) => act(() => api.patchClient(c.id, { ai_enabled: e.target.value === "on" }))}>
-                        <option value="on">AI notes on</option>
-                        <option value="off">AI notes off</option>
-                      </Select>
-                      <Select className="!w-[170px]" value={c.scope} onChange={(e) => act(() => api.patchClient(c.id, { scope: e.target.value as "own" | "all" }))}>
-                        <option value="own">Own recordings</option>
-                        <option value="all">All recordings</option>
-                      </Select>
-                      <button className="text-muted hover:text-fg" title="What do these mean?" onClick={() => setExplain(true)}><HelpCircle className="h-3.5 w-3.5" /></button>
-                    </>
-                  ) : <><Badge><Eye className="h-3 w-3" />{c.scope === "all" ? "All recordings" : "Own recordings"}</Badge><Badge><Sparkles className="h-3 w-3" />{c.aiEnabled ? "AI notes" : "No AI notes"}</Badge></>}
-                  {!c.revoked && <Button size="sm" variant="ghost" onClick={() => setRevoking(c)}>Revoke</Button>}
-                  <Button size="sm" variant="ghost" title="Rename" onClick={() => { setName(c.name); setRenaming(c); }}><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button size="sm" variant="ghost" title="Delete" onClick={() => setDeleting(c)}><Trash2 className="h-3.5 w-3.5 text-danger" /></Button>
-                </Row>
+              <div key={c.id} className="border-b border-border last:border-b-0">
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+                  <div className="min-w-[220px] flex-1">
+                    <div className="text-[13px]">{c.name}</div>
+                    <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-muted">
+                      {c.kind === "browser" ? <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" />Recorder in this dashboard</span> : <span className="inline-flex items-center gap-1 font-mono"><KeyRound className="h-3 w-3" />{c.prefix}…</span>}
+                      <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{c.lastSeenAt ? `last seen ${fmtDate(c.lastSeenAt)}${c.lastVersion ? ` (Huddle ${c.lastVersion})` : ""}` : "never connected"}</span>
+                      <span className="inline-flex items-center gap-1"><Mic className="h-3 w-3" />{c.meetingCount} meeting{c.meetingCount === 1 ? "" : "s"}</span>
+                      <button className="inline-flex items-center gap-1 hover:text-fg" onClick={() => setOpen(open === c.id ? null : c.id)}>{c.tokenCount} MCP token{c.tokenCount === 1 ? "" : "s"} <ChevronDown className={cn("h-3 w-3 transition-transform", open === c.id && "rotate-180")} /></button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {c.revoked ? <Badge tone="bad">Revoked</Badge> : (
+                      <>
+                        {ai && (
+                          <Select className="!w-[140px]" value={c.aiEnabled ? "on" : "off"} onChange={(e) => act(() => api.patchClient(c.id, { ai_enabled: e.target.value === "on" }))}>
+                            <option value="on">AI notes on</option>
+                            <option value="off">AI notes off</option>
+                          </Select>
+                        )}
+                        {isAdmin && (
+                          <Select className="!w-[160px]" value={c.scope} onChange={(e) => act(() => api.patchClient(c.id, { scope: e.target.value as "own" | "all" }))}>
+                            <option value="own">Own recordings</option>
+                            <option value="all">All recordings</option>
+                          </Select>
+                        )}
+                        {!isAdmin && c.scope === "all" && <Badge><Eye className="h-3 w-3" />All recordings</Badge>}
+                        {isAdmin && <button className="text-muted hover:text-fg" title="What do these mean?" onClick={() => setExplain(true)}><HelpCircle className="h-3.5 w-3.5" /></button>}
+                        {c.kind !== "browser" && <Button size="sm" variant="ghost" onClick={() => setRevoking(c)}>Revoke</Button>}
+                      </>
+                    )}
+                    <Button size="sm" variant="ghost" title="Rename" onClick={() => { setName(c.name); setRenaming(c); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                    <Button size="sm" variant="ghost" title="Delete" onClick={() => setDeleting(c)}><Trash2 className="h-3.5 w-3.5 text-danger" /></Button>
+                  </div>
+                </div>
                 {open === c.id && <Tokens client={c} onChanged={load} />}
               </div>
             ))}
@@ -74,8 +91,8 @@ export function Clients({ isAdmin }: { isAdmin: boolean }) {
         <dl className="flex flex-col gap-3 text-[13px]">
           <div><dt className="font-medium">Own recordings</dt><dd className="text-muted">The recordings this client sent. Other clients and accounts never see them.</dd></div>
           <div><dt className="font-medium">All recordings</dt><dd className="text-muted">Every recording on the server, including other accounts'. Reading only; changing stays with the sender.</dd></div>
-          <div><dt className="font-medium">AI notes</dt><dd className="text-muted">Off: the server transcribes and separates speakers but writes no summary for this client.</dd></div>
-          <div><dt className="font-medium">MCP tokens</dt><dd className="text-muted">Made per client and see exactly what the client sees.</dd></div>
+          <div><dt className="font-medium">AI notes</dt><dd className="text-muted">Off: the server transcribes and separates speakers but writes no summary for this client. Shown only when the server has an AI model.</dd></div>
+          <div><dt className="font-medium">MCP tokens</dt><dd className="text-muted">Made per client and see exactly what the client sees. Revoking the client revokes them.</dd></div>
         </dl>
       </Dialog>
       <Dialog open={!!renaming} onClose={() => setRenaming(null)} title="Rename client"
@@ -111,12 +128,12 @@ function Tokens({ client, onChanged }: { client: Client; onChanged: () => void }
   useEffect(() => { load(); }, [load]);
   const snippet = (t: McpToken) => `{\n  "mcpServers": {\n    "huddle": {\n      "type": "http",\n      "url": "${t.url ?? `${window.location.origin}/mcp`}",\n      "headers": { "Authorization": "Bearer ${t.token}" }\n    }\n  }\n}`;
   return (
-    <div className="border-b border-border bg-fg/[0.02] px-4 py-3 last:border-b-0">
-      <div className="mb-2 flex items-center justify-between"><span className="text-[12px] font-medium text-muted">MCP tokens for {client.name} — {client.scope === "all" ? "see all recordings" : "see this client's recordings"}</span>{!client.revoked && <Button size="sm" onClick={() => { setName(""); setDays(90); setCreating(true); }}><Plus className="h-3 w-3" /> New token</Button>}</div>
+    <div className="bg-fg/[0.02] px-4 py-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><span className="text-[12px] font-medium text-muted">MCP tokens for {client.name}</span>{!client.revoked && <Button size="sm" onClick={() => { setName(""); setDays(90); setCreating(true); }}><Plus className="h-3 w-3" /> New token</Button>}</div>
       {tokens.map((t) => (
-        <div key={t.id} className="flex items-center gap-3 py-1.5 text-[12.5px]">
+        <div key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-[12.5px]">
           <span className="font-medium">{t.name}</span><span className="font-mono text-muted">{t.prefix}…</span>
-          <span className="text-muted">{t.expired ? "expired" : t.expiresAt ? `until ${fmtDate(t.expiresAt)}` : ""}{t.lastUsedAt ? ` · used ${fmtDate(t.lastUsedAt)}` : ""}</span>
+          <span className="text-muted">{t.revoked ? "revoked" : t.expired ? "expired" : t.expiresAt ? `until ${fmtDate(t.expiresAt)}` : ""}{t.lastUsedAt ? `, used ${fmtDate(t.lastUsedAt)}` : ""}</span>
           <div className="flex-1" />
           <Button size="sm" variant="ghost" onClick={() => setDeleting(t)}><Trash2 className="h-3.5 w-3.5" /></Button>
         </div>

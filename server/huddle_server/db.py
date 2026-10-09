@@ -92,6 +92,10 @@ SCHEMA = [
     -- Clients made by the dashboard's own recorder (one per account) carry kind 'browser'.
     ALTER TABLE clients ADD COLUMN kind TEXT NOT NULL DEFAULT 'device';
     """),
+    (5, """
+    -- The dashboard asks once per account to turn on two-factor authentication.
+    ALTER TABLE users ADD COLUMN totp_prompted INTEGER NOT NULL DEFAULT 0;
+    """),
 ]
 
 

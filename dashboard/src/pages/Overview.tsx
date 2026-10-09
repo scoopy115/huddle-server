@@ -56,15 +56,19 @@ export function Overview() {
 
       <h3 className="mb-2 mt-6 font-display text-[11.5px] font-bold uppercase tracking-wider text-muted">Hardware</h3>
       <Card>
-        <Row label="CPU" hint={`${d.hardware.cpuCores} cores`}><span className="text-[13px]">{d.hardware.cpuBrand ?? d.hardware.arch}</span></Row>
-        <Row label="GPU"><span className="text-[13px]">{d.hardware.gpu ?? "None"}</span></Row>
-        <Row label="Memory"><span className="text-[13px]">{fmtBytes(d.hardware.memoryBytes) || "Unknown"}</span></Row>
-        <Row label="System" hint={d.hardware.arch}><span className="text-[13px]">{d.hardware.os} {d.hardware.osVersion}</span></Row>
-        <Row label="Huddle Server" hint="Version"><span className="text-[13px]">{d.version}</span></Row>
-        <Row label="Huddle engine" hint="Version"><span className="text-[13px]">{d.engineVersion}</span></Row>
+        <Row label="CPU"><Value main={d.hardware.cpuBrand ?? d.hardware.arch} sub={`${d.hardware.cpuCores} cores`} /></Row>
+        <Row label="GPU"><Value main={d.hardware.gpu ?? "None"} /></Row>
+        <Row label="Memory"><Value main={fmtBytes(d.hardware.memoryBytes) || "Unknown"} /></Row>
+        <Row label="System"><Value main={`${d.hardware.os} ${d.hardware.osVersion}`} sub={d.hardware.arch} /></Row>
+        <Row label="Huddle Server"><Value main={d.version} sub="version" /></Row>
+        <Row label="Huddle Engine"><Value main={d.engineVersion} sub="version" /></Row>
       </Card>
     </>
   );
+}
+
+function Value({ main, sub }: { main: string; sub?: string }) {
+  return <div className="text-right"><div className="text-[13px]">{main}</div>{sub && <div className="text-[12px] text-muted">{sub}</div>}</div>;
 }
 
 function Stat({ icon, label, value, hint }: { icon: React.ReactNode; label: string; value: string; hint?: React.ReactNode }) {

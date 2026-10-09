@@ -103,7 +103,10 @@ def set_scope(db: ServerDB, client_id: int, scope: str) -> None:
 
 
 def revoke(db: ServerDB, client_id: int) -> None:
-    db.execute("UPDATE clients SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", (time.time(), client_id))
+    """Revoking a client also revokes every MCP token made for it."""
+    now = time.time()
+    db.execute("UPDATE clients SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", (now, client_id))
+    db.execute("UPDATE mcp_tokens SET revoked_at = ? WHERE client_id = ? AND revoked_at IS NULL", (now, client_id))
 
 
 def delete(db: ServerDB, client_id: int) -> None:

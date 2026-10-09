@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ShieldCheck, ShieldOff } from "lucide-react";
 import { api, errorMessage, type Me } from "@/lib/api";
 import { Badge, Button, Card, Dialog, Input, Row } from "@/components/ui";
@@ -22,6 +22,7 @@ export function Account({ me, onChanged }: { me: Me; onChanged: () => void }) {
   };
   const [dialogError, setDialogError] = useState<string | null>(null);
   const startTotp = async () => { setError(null); setDialogError(null); setCode(""); setSetup(await api.totpSetup()); };
+  useEffect(() => { if (window.location.search.includes("totp=1") && !user.totpEnabled) { window.history.replaceState({}, "", "/account"); startTotp(); } }, []); // oxlint-disable-line react-hooks/exhaustive-deps
   const enable = async (c = code) => { setDialogError(null); try { await api.totpEnable(c); setSetup(null); setCode(""); onChanged(); } catch (e) { setDialogError(errorMessage(e)); } };
   const disable = async (c = code) => { setDialogError(null); try { await api.totpDisable(c); setDisabling(false); setCode(""); onChanged(); } catch (e) { setDialogError(errorMessage(e)); } };
   return (
@@ -30,7 +31,7 @@ export function Account({ me, onChanged }: { me: Me; onChanged: () => void }) {
       <Card>
         <Row label="Name"><Input className="w-[240px]" value={name} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name !== user.name && saveName()} /></Row>
         <Row label="E-mail address"><span className="text-[13px]">{user.email}</span></Row>
-        <Row label="Two-factor authentication" hint="A six-digit code from an authenticator app at every login. Strongly recommended for a server reachable from the internet.">
+        <Row label="Two-factor authentication" hint="A six-digit code from an authenticator app at every login.">
           {user.totpEnabled ? <><Badge tone="good"><ShieldCheck className="h-3 w-3" /> On</Badge><Button size="sm" variant="ghost" onClick={() => { setCode(""); setDialogError(null); setDisabling(true); }}>Turn off</Button></> : <Button size="sm" variant="primary" onClick={startTotp}><ShieldCheck className="h-3.5 w-3.5" /> Turn on</Button>}
         </Row>
       </Card>

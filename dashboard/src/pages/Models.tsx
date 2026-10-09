@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, Download, HardDrive, RefreshCw, Star, Trash2 } from "lucide-react";
-import { api, errorMessage } from "@/lib/api";
+import { api, errorMessage, type SpeakerModels } from "@/lib/api";
 import type { DownloadCandidate, DownloadProgress, Environment, LocalModel, Resolution, UserSettings } from "@/types/engine";
 import { fmtBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -45,6 +45,7 @@ export function Models() {
   const [downloads, setDownloads] = useState<DownloadProgress[]>([]);
   const [confirm, setConfirm] = useState<LocalModel | null>(null);
   const [custom, setCustom] = useState("");
+  const [speakers, setSpeakers] = useState<SpeakerModels | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
     try {
@@ -55,8 +56,9 @@ export function Models() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const t = setInterval(async () => {
-      const d = await api.downloads().catch(() => []);
+      const [d, sp] = await Promise.all([api.downloads().catch(() => []), api.speakerModels().catch(() => null)]);
       setDownloads((prev) => { if (prev.some((p) => p.state === "downloading") && d.some((x) => x.state === "done")) load(); return d; });
+      if (sp) setSpeakers(sp);
     }, 1000);
     return () => clearInterval(t);
   }, [load]);
@@ -128,6 +130,20 @@ export function Models() {
         </Row>
       </Card>
       {section("transcription", "models.whisper", whisper, "Transcription")}
+      <h3 className="mb-2 mt-6 font-display text-[11.5px] font-bold uppercase tracking-wider text-muted">Speaker separation</h3>
+      <Card>
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] font-medium">pyannote segmentation 3.0 and TitaNet</div>
+            <div className="flex flex-wrap gap-x-3 text-[12px] text-muted"><span>Who spoke when, and voice embeddings for the clients</span><span className="inline-flex items-center gap-1"><Download className="h-3 w-3" />110 MB</span><span>MIT, CC-BY-4.0</span></div>
+            {speakers?.downloading && <div className="mt-1.5 h-1 w-full overflow-hidden rounded bg-fg/10"><div className="h-full bg-accent transition-all" style={{ width: `${Math.round(speakers.progress * 100)}%` }} /></div>}
+            {speakers?.error && <div className="mt-1 text-[12px] text-danger">{speakers.error}</div>}
+          </div>
+          {speakers?.installed ? <Badge tone="good"><Check className="h-3 w-3" /> Installed</Badge>
+            : speakers?.downloading ? <span className="text-[12px] text-muted">{Math.round(speakers.progress * 100)}%</span>
+            : <Button size="sm" onClick={() => api.downloadSpeakerModels().then(setSpeakers)}><Download className="h-3.5 w-3.5" /> Download</Button>}
+        </div>
+      </Card>
       {section("llm", "models.ai", ai, "Notes (AI model via Ollama)")}
       <DangerDialog open={!!confirm} onClose={() => setConfirm(null)} title="Remove this model?" confirmLabel="Remove" seconds={2}
         onConfirm={async () => { if (confirm) { await api.deleteModel(confirm.id); setConfirm(null); load(); } }}>

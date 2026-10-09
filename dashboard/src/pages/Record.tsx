@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Languages, Mic, NotebookPen, Pause, Play, Square, Users } from "lucide-react";
+import { Languages, Mic, Monitor, NotebookPen, Pause, Play, Square, Users } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
 import { navigate } from "@/lib/router";
@@ -26,6 +26,9 @@ export function Record() {
   const [notesLanguage, setNotesLanguage] = useState(() => (navigator.language || "en").slice(0, 2));
   const [mode, setMode] = useState<"meeting" | "interview">("meeting");
   const [speakers, setSpeakers] = useState(0);
+  const [systemAudio, setSystemAudio] = useState(false);
+  const canShare = typeof navigator !== "undefined" && !!navigator.mediaDevices?.getDisplayMedia;
+  const display = useRef<MediaStream | null>(null);
   const [state, setState] = useState<"idle" | "recording" | "paused" | "uploading">("idle");
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -85,12 +88,25 @@ export function Record() {
   const start = async () => {
     setError(null);
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ audio: device ? { deviceId: { exact: device } } : true });
-      stream.current = s;
+      const mic = await navigator.mediaDevices.getUserMedia({ audio: device ? { deviceId: { exact: device } } : true });
       navigator.mediaDevices.enumerateDevices().then((d) => setDevices(d.filter((x) => x.kind === "audioinput"))).catch(() => {});
       const ac = new AudioContext();
       audioCtx.current = ac;
       const an = ac.createAnalyser(); an.fftSize = 1024;
+      const mix = ac.createMediaStreamDestination();
+      ac.createMediaStreamSource(mic).connect(mix);
+      let s: MediaStream = mic;
+      if (systemAudio && canShare) {
+        // The browser asks which tab, window or screen to share; only its audio is kept.
+        // Chrome and Edge deliver system or tab audio, Safari and Firefox deliver none.
+        const d = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        d.getVideoTracks().forEach((t) => t.stop());
+        if (d.getAudioTracks().length === 0) { mic.getTracks().forEach((t) => t.stop()); ac.close().catch(() => {}); setError("The shared source carried no audio. Pick a tab or screen with 'Share audio' on, or record the microphone only."); return; }
+        display.current = d;
+        ac.createMediaStreamSource(new MediaStream(d.getAudioTracks())).connect(mix);
+        s = mix.stream;
+      }
+      stream.current = mic;
       ac.createMediaStreamSource(s).connect(an);
       analyser.current = an;
       const { mime } = mimeType();
@@ -116,6 +132,8 @@ export function Record() {
     setState("uploading");
     await new Promise<void>((resolve) => { r.onstop = () => resolve(); r.stop(); });
     stream.current?.getTracks().forEach((t) => t.stop());
+    display.current?.getTracks().forEach((t) => t.stop());
+    display.current = null;
     audioCtx.current?.close().catch(() => {});
     analyser.current = null;
     const { ext } = mimeType();
@@ -128,7 +146,7 @@ export function Record() {
       const res = await api.record({
         id, startedAt: startedAt.current / 1000, durationSec: duration, format: ext, title: title.trim() || null,
         language: language === "auto" ? null : language, notesLanguage, mode, speakerCount: speakers || null,
-        inputDevice: devices.find((x) => x.deviceId === device)?.label || "Browser microphone",
+        inputDevice: (devices.find((x) => x.deviceId === device)?.label || "Browser microphone") + (display.current || systemAudio ? " + system audio" : ""),
       }, blob, `recording.${ext}`);
       navigate(`/meetings/${encodeURIComponent(res.id)}`);
     } catch (e) { setError(errorMessage(e)); setState("idle"); }
@@ -154,6 +172,15 @@ export function Record() {
               {devices.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || "Microphone"}</option>)}
             </Select>
           </label>
+          {canShare && (
+            <label className="flex items-center justify-between gap-3 text-[13px]">
+              <span className="inline-flex items-center gap-2 text-muted" title="Chrome and Edge: the audio of a tab or screen you pick when recording starts"><Monitor className="h-3.5 w-3.5" /> System audio</span>
+              <Select value={systemAudio ? "on" : "off"} onChange={(e) => setSystemAudio(e.target.value === "on")}>
+                <option value="off">Off</option>
+                <option value="on">A tab or screen (online calls)</option>
+              </Select>
+            </label>
+          )}
           <label className="flex items-center justify-between gap-3 text-[13px]">
             <span className="inline-flex items-center gap-2 text-muted"><Languages className="h-3.5 w-3.5" /> Spoken language</span>
             <Select value={language} onChange={(e) => setLanguage(e.target.value)}>{LANGS.map(([c, l]) => <option key={c} value={c}>{l}</option>)}</Select>

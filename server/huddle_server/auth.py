@@ -36,6 +36,7 @@ class User:
     role: str = "user"
     approved: bool = True
     name: str = ""
+    totp_prompted: bool = True
 
     @property
     def is_admin(self) -> bool:
@@ -43,7 +44,7 @@ class User:
 
     def public(self) -> dict:
         return {"id": self.id, "email": self.email, "name": self.name, "totpEnabled": self.totp_enabled, "role": self.role,
-                "approved": self.approved, "createdAt": self.created_at}
+                "approved": self.approved, "createdAt": self.created_at, "totpPrompted": self.totp_prompted}
 
 
 @dataclass
@@ -80,7 +81,8 @@ throttle = Throttle()
 
 def _user(r) -> User:
     return User(id=r["id"], email=r["email"], totp_enabled=bool(r["totp_enabled"]), created_at=r["created_at"],
-                role=r["role"] if r["role"] in ROLES else "user", approved=bool(r["approved"]), name=r["name"] or "")
+                role=r["role"] if r["role"] in ROLES else "user", approved=bool(r["approved"]), name=r["name"] or "",
+                totp_prompted=bool(r["totp_prompted"]) if "totp_prompted" in r.keys() else True)  # noqa: SIM118 — sqlite3.Row
 
 
 def user_count(db: ServerDB) -> int:
@@ -118,6 +120,10 @@ def create_user(db: ServerDB, email: str, password: str, role: str = "user", app
     cur = db.execute("INSERT INTO users(email, password_hash, created_at, role, approved, name) VALUES (?,?,?,?,?,?)",
                      (email, _ph.hash(password), time.time(), role if role in ROLES else "user", 1 if approved else 0, name))
     return _user(db.one("SELECT * FROM users WHERE id = ?", (cur.lastrowid,)))
+
+
+def mark_totp_prompted(db: ServerDB, user_id: int) -> None:
+    db.execute("UPDATE users SET totp_prompted = 1 WHERE id = ?", (user_id,))
 
 
 def set_name(db: ServerDB, user_id: int, name: str) -> None:
@@ -248,7 +254,7 @@ def create_session(db: ServerDB, user: User, hours: int, user_agent: str | None 
 def get_session(db: ServerDB, sid: str | None, hours: int) -> Session | None:
     if not sid:
         return None
-    r = db.one("SELECT s.*, u.email, u.name, u.totp_enabled, u.created_at AS u_created, u.role, u.approved FROM sessions s"
+    r = db.one("SELECT s.*, u.email, u.name, u.totp_enabled, u.totp_prompted, u.created_at AS u_created, u.role, u.approved FROM sessions s"
                " JOIN users u ON u.id = s.user_id WHERE s.id = ?", (sid,))
     now = time.time()
     if not r or r["expires_at"] < now or not r["approved"]:
@@ -258,7 +264,8 @@ def get_session(db: ServerDB, sid: str | None, hours: int) -> Session | None:
     if now - r["last_seen"] > 60:   # sliding expiry, written at most once a minute
         db.execute("UPDATE sessions SET last_seen = ?, expires_at = ? WHERE id = ?", (now, now + hours * 3600, sid))
     user = User(id=r["user_id"], email=r["email"], totp_enabled=bool(r["totp_enabled"]), created_at=r["u_created"],
-                role=r["role"] if r["role"] in ROLES else "user", approved=True, name=r["name"] or "")
+                role=r["role"] if r["role"] in ROLES else "user", approved=True, name=r["name"] or "",
+                totp_prompted=bool(r["totp_prompted"]))
     return Session(id=sid, user=user, totp_ok=bool(r["totp_ok"]), expires_at=r["expires_at"])
 
 
