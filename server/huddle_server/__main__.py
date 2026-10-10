@@ -32,7 +32,7 @@ def cmd_serve(args) -> int:
     if args.port:
         cfg.port = args.port
     uvicorn.run("huddle_server.app:app", host=cfg.host, port=cfg.port, log_level="info", access_log=False,
-                proxy_headers=True, forwarded_allow_ips="*")
+                proxy_headers=True, forwarded_allow_ips="*", timeout_keep_alive=75)
     return 0
 
 

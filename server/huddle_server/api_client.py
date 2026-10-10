@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import shutil
 from pathlib import Path
@@ -18,6 +19,7 @@ from . import __version__, access, clients, mcp_tokens
 from .clients import Client
 from .engine_bridge import capabilities, engine_ctx, engine_version
 
+log = logging.getLogger("huddle.server")
 router = APIRouter(prefix="/v1")
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{3,63}$")
 EXT = {"flac": ".flac", "wav": ".wav", "m4a": ".m4a", "mp3": ".mp3", "ogg": ".ogg", "webm": ".webm"}
@@ -112,6 +114,7 @@ async def store_upload(request: Request, client: Client, m: dict, audio: UploadF
     if size < 1000:
         dest.unlink(missing_ok=True)
         raise HTTPException(400, "The audio file is empty")
+    log.info("upload %s: %s, %d bytes (%s) from client %s", rid, fmt, size, m.get("inputDevice") or "?", client.name)
     if existing:
         # re-upload (retry from the desktop): fresh audio, everything processed again
         c.jobs.cancel(rid)
