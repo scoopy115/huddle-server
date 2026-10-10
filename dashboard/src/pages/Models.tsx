@@ -73,7 +73,7 @@ export function Models() {
   const ollama = env.providers.find((p) => p.id === "ollama");
   const isInstalled = (c: DownloadCandidate) => c.task === "llm" ? env.models.some((m) => m.source === "ollama" && m.name === c.url)
     : env.models.some((m) => m.task === "transcription" && m.compatible && m.source === "our_app" && m.id === `our_app:${c.url}`);
-  const candsFor = (task: string) => cands.filter((c) => c.task === task && (task !== "transcription" || !c.id.includes("mlx") || env.hardware.appleSilicon)).sort((a, b) => Number(b.recommended) - Number(a.recommended));
+  const candsFor = (task: string) => cands.filter((c) => c.task === task && (task !== "transcription" || (!c.id.includes("mlx") && !c.id.startsWith("parakeet:")) || env.hardware.appleSilicon)).sort((a, b) => Number(b.recommended) - Number(a.recommended));
 
   const pull = () => { const n = custom.trim(); if (!n) return; setCustom(""); api.startDownload(`ollama:${n}`).then(() => api.downloads().then(setDownloads)).catch((e) => setError(errorMessage(e))); };
   const customDownloads = downloads.filter((d) => d.id.startsWith("ollama:") && !cands.some((c) => c.id === d.id));

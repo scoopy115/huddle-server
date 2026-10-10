@@ -51,7 +51,7 @@ export function Processes({ onChanged }: { onChanged: () => void }) {
                             {pct != null && <span className="font-mono tabular-nums text-accent">{pct}%</span>}
                             {eta && <span>{eta}</span>}
                           </div>
-                          {pct != null && <div className="mt-1.5 h-1 w-full max-w-[320px] overflow-hidden rounded bg-fg/10"><div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} /></div>}
+                          {pct != null && <div className="mt-1.5 h-1 w-full overflow-hidden rounded bg-fg/10"><div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} /></div>}
                         </div>
                         <Button size="sm" variant="ghost" title="Cancel — keeps the previous version" onClick={async () => { await api.cancelProcessing(j.meetingId); onChanged(); }}><X className="h-3.5 w-3.5" /> Cancel</Button>
                       </div>
@@ -81,14 +81,16 @@ export function Processes({ onChanged }: { onChanged: () => void }) {
                 <div className="mb-1.5 px-2 font-display text-[11.5px] font-bold uppercase tracking-wider text-muted">Downloads</div>
                 <div className="panel overflow-hidden">
                   {info.downloads.map((d) => {
-                    const pct = d.totalBytes ? Math.round((d.receivedBytes / d.totalBytes) * 100) : 0;
+                    // the engine reports per file; only a whole-model total gives a meaningful percentage
+                    const known = d.totalBytes >= d.candidate.sizeBytes * 0.5;
+                    const pct = known ? Math.min(100, Math.round((d.receivedBytes / d.totalBytes) * 100)) : null;
                     return (
                       <div key={d.id} className="flex items-center gap-4 border-b border-border px-4 py-3 last:border-b-0">
                         <Download className="h-4 w-4 text-muted" />
                         <div className="min-w-0 flex-1">
                           <div className="text-[13.5px] font-medium">{d.candidate.name}</div>
-                          <div className="text-[12px] text-muted">{fmtBytes(d.receivedBytes)} of {fmtBytes(d.totalBytes)} · {pct}%</div>
-                          <div className="mt-1.5 h-1 w-full max-w-[320px] overflow-hidden rounded bg-fg/10"><div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} /></div>
+                          <div className="text-[12px] text-muted">{pct != null ? `${fmtBytes(d.receivedBytes)} of ${fmtBytes(d.totalBytes)}, ${pct}%` : `Downloading, ${fmtBytes(d.candidate.sizeBytes)} in total`}</div>
+                          <div className="mt-1.5 h-1 w-full overflow-hidden rounded bg-fg/10"><div className={pct == null ? "h-full w-1/3 animate-pulse bg-accent" : "h-full bg-accent transition-all"} style={pct != null ? { width: `${pct}%` } : undefined} /></div>
                         </div>
                         <Button size="sm" variant="ghost" onClick={() => api.cancelDownload(d.id)}><X className="h-3.5 w-3.5" /> Cancel</Button>
                       </div>
