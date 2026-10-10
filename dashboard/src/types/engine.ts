@@ -303,6 +303,8 @@ export interface DownloadCandidate {
   recommended: boolean;
   description: string | null;
   minMemoryBytes: number | null;
+  /** Whether this computer already has it (engine-side; null from an older engine). */
+  installed?: boolean | null;
 }
 
 export interface Resolution {

@@ -71,8 +71,11 @@ export function Models() {
   if (!env || !settings) return <Spinner />;
   const inUse = new Set(res.map((r) => r.model?.id).filter(Boolean));
   const ollama = env.providers.find((p) => p.id === "ollama");
-  const isInstalled = (c: DownloadCandidate) => c.task === "llm" ? env.models.some((m) => m.source === "ollama" && m.name === c.url)
-    : env.models.some((m) => m.task === "transcription" && m.compatible && m.source === "our_app" && m.id === `our_app:${c.url}`);
+  // The engine says whether a candidate is installed (a Parakeet ONNX archive lands as
+  // our_app:parakeet/<name>, not our_app:<url>); the lookup is only for an older engine.
+  const isInstalled = (c: DownloadCandidate) => c.installed ?? (c.task === "llm" ? env.models.some((m) => m.source === "ollama" && m.name === c.url)
+    : c.id.startsWith("parakeet:onnx-") ? env.models.some((m) => m.task === "transcription" && m.source === "our_app" && m.family === "parakeet" && m.format === "ONNX")
+    : env.models.some((m) => m.task === "transcription" && m.compatible && m.source === "our_app" && m.id === `our_app:${c.url}`));
   const candsFor = (task: string) => cands.filter((c) => c.task === task && (task !== "transcription" || !c.id.includes("mlx") || env.hardware.appleSilicon)).sort((a, b) => Number(b.recommended) - Number(a.recommended));
 
   const pull = () => { const n = custom.trim(); if (!n) return; setCustom(""); api.startDownload(`ollama:${n}`).then(() => api.downloads().then(setDownloads)).catch((e) => setError(errorMessage(e))); };

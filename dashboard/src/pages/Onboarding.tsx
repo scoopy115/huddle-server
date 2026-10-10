@@ -43,8 +43,12 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const installedList = (task: "transcription" | "llm") => env.models.filter((m) => m.task === task && m.compatible && (task !== "llm" || m.source === "ollama"));
   const candsFor = (task: "transcription" | "llm") => cands.filter((c) => c.task === task && (task !== "transcription" || !c.id.includes("mlx") || env.hardware.appleSilicon))
     .sort((a, b) => Number(b.recommended) - Number(a.recommended));
-  const isInstalled = (c: DownloadCandidate) => c.task === "llm" ? env.models.some((m) => m.source === "ollama" && m.name === c.url)
-    : env.models.some((m) => m.task === "transcription" && m.source === "our_app" && m.id === `our_app:${c.url}`);
+  // The engine says whether a candidate is installed (it knows the ids its downloads produce: a
+  // Parakeet ONNX archive lands as our_app:parakeet/<name>, not our_app:<url>); the lookup below
+  // is only for an engine that does not report it yet.
+  const isInstalled = (c: DownloadCandidate) => c.installed ?? (c.task === "llm" ? env.models.some((m) => m.source === "ollama" && m.name === c.url)
+    : c.id.startsWith("parakeet:onnx-") ? env.models.some((m) => m.task === "transcription" && m.source === "our_app" && m.family === "parakeet" && m.format === "ONNX")
+    : env.models.some((m) => m.task === "transcription" && m.source === "our_app" && m.id === `our_app:${c.url}`));
   const ollama = env.providers.find((p) => p.id === "ollama")?.status === "available";
   const start = (id: string) => api.startDownload(id).then(() => api.downloads().then(setDownloads)).catch((e) => setError(errorMessage(e)));
   const done = [installedList("transcription").length > 0, speakers.installed, installedList("llm").length > 0];
