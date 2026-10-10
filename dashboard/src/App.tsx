@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, CheckSquare, Folder, KeyRound, LogOut, Menu, Mic, Search as SearchIcon, Settings as SettingsIcon, ShieldCheck, Sliders, UserRound, Users as UsersIcon, LayoutDashboard, X, type LucideIcon } from "lucide-react";
+import { Activity, CheckSquare, Folder, HardDrive, KeyRound, LogOut, Menu, Mic, Search as SearchIcon, Settings as SettingsIcon, ShieldCheck, Sliders, UserRound, Users as UsersIcon, LayoutDashboard, X, type LucideIcon } from "lucide-react";
 import { api, errorMessage, setUnauthorizedHandler, type Me } from "@/lib/api";
 import type { Meeting } from "@/types/engine";
-import { AiContext } from "@/lib/ai";
+import { AiContext, type AiState } from "@/lib/ai";
 import { Link, navigate, useRoute } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { Button, Dialog, Spinner } from "@/components/ui";
@@ -24,6 +24,7 @@ import { ProjectPage } from "@/pages/Project";
 import { ActionItems } from "@/pages/ActionItems";
 import { Processes } from "@/pages/Processes";
 import { Search } from "@/pages/Search";
+import { Files } from "@/pages/Files";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl+";
@@ -41,6 +42,7 @@ const NAV: Nav[] = [
   { to: "/clients", label: "Clients", icon: KeyRound, hint: `${modKey}6` },
   { to: "/users", label: "Users", icon: UsersIcon, admin: true, hint: `${modKey}7` },
   { to: "/models", label: "Models", icon: Sliders, admin: true, hint: `${modKey}8` },
+  { to: "/files", label: "Files", icon: HardDrive, admin: true },
   { to: "/settings", label: "Settings", icon: SettingsIcon, admin: true, hint: `${modKey},` },
   { to: "/account", label: "Account", icon: UserRound, hint: `${modKey}9` },
 ];
@@ -66,7 +68,7 @@ export function App() {
   const [name, setName] = useState("Huddle Server");
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
   const [totpAsk, setTotpAsk] = useState(false);
-  const [ai, setAi] = useState({ ready: false, model: null as string | null });
+  const [ai, setAi] = useState<AiState>({ ready: false, model: null, speakers: true });
   const [meetings, setMeetings] = useState<Meeting[] | null>(null);
   const [palette, setPalette] = useState(false);
   const [drawer, setDrawer] = useState(false);
@@ -77,7 +79,7 @@ export function App() {
       const [s, m] = await Promise.all([api.setupState(), api.me()]);
       setNeedsSetup(s.needsSetup); setName(s.name); setMe(m); setError(null);
       if (m.user?.role === "admin") setOnboarded((await api.onboarding()).completed); else setOnboarded(true);
-      if (m.user) api.capabilities().then((c) => setAi({ ready: !!c.llm, model: c.llm })).catch(() => {});
+      if (m.user) api.capabilities().then((c) => setAi({ ready: !!c.llm, model: c.llm, speakers: !!c.diarization })).catch(() => {});
     } catch (e) { setError(errorMessage(e)); setMe(null); }
   }, []);
   const refreshMeetings = useCallback(() => api.meetings().then(setMeetings).catch(() => {}), []);
@@ -132,6 +134,7 @@ export function App() {
     : path === "/clients" ? <Clients isAdmin={isAdmin} />
     : path === "/users" && isAdmin ? <Users meId={me.user.id} />
     : path === "/models" && isAdmin ? <Models />
+    : path === "/files" && isAdmin ? <Files />
     : path === "/settings" && isAdmin ? <Settings onName={setName} />
     : path === "/account" ? <Account me={me} onChanged={refresh} />
     : isAdmin ? <Overview /> : <Meetings meetings={meetings} onChanged={changed} />;

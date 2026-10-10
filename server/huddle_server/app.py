@@ -33,7 +33,7 @@ PUBLIC_PREFIXES = ("/api/auth/invite/",)
 # Allowed while the second factor is still pending.
 TOTP_PENDING_OK = {"/api/auth/totp", "/api/auth/logout", "/api/auth/me"}
 # Admin only: everything that configures the server or looks at other accounts.
-ADMIN_PATHS = ("/engine", "/api/overview", "/api/server", "/api/users", "/api/invites", "/api/processes")
+ADMIN_PATHS = ("/engine", "/api/overview", "/api/server", "/api/users", "/api/invites", "/api/processes", "/api/files")
 STATIC = Path(__file__).parent / "static"
 CSP = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; media-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 

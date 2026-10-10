@@ -3,6 +3,8 @@ approval, accounts, clients and their scopes, MCP tokens, and the meetings an ac
 Admin-only paths are listed in app.ADMIN_PATHS; the rest checks ownership per record."""
 from __future__ import annotations
 
+import time as _t
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
@@ -228,7 +230,6 @@ def info(request: Request):
 # ---- admin: overview, server, users, invites ------------------------------------ #
 @router.get("/overview")
 def overview(request: Request):
-    import time as _t
     cfg = request.app.state.cfg
     db = request.app.state.db
     c = engine_ctx()
@@ -952,3 +953,104 @@ def search_meetings(request: Request, q: str, limit: int = 20, project_id: str |
 def processes(request: Request):
     from huddle_engine.app import processes as engine_processes
     return engine_processes()
+
+
+# ---- reprocess ------------------------------------------------------------------- #
+class ReprocessBody(BaseModel):
+    language_override: str | None = None    # "" = detect
+    speaker_count: int | None = None        # 0 = automatic
+    mode: str | None = None                 # meeting | interview
+
+
+@router.post("/meetings/{meeting_id}/process")
+def reprocess_meeting(request: Request, meeting_id: str, body: ReprocessBody):
+    """Transcript, speakers and notes again, with the client's AI setting respected."""
+    from .api_client import enqueue_for
+    _meeting_or_404(request, meeting_id, write=True)
+    c = engine_ctx()
+    try:
+        ms.update_meeting(c.db, meeting_id, language_override=body.language_override, speaker_count_hint=body.speaker_count,
+                          mode=body.mode)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    r = request.app.state.db.one("SELECT client_id FROM uploads WHERE meeting_id = ?", (meeting_id,))
+    client = clients.get(request.app.state.db, int(r["client_id"])) if r else None
+    if client:
+        enqueue_for(client, meeting_id)
+    else:
+        c.jobs.enqueue(meeting_id)
+    return {"ok": True}
+
+
+# ---- files (admin): everything Huddle stores, read-only --------------------------- #
+# Transcripts and notes live in the database; a meeting folder lists them as files built on request.
+VIRTUAL = {"transcript.txt": "txt", "notes.md": "md", "meeting.json": "json"}
+
+
+def _virtual(c, target: Path):
+    """(meeting id, export format) when `target` names one of the generated files of a meeting folder."""
+    root = c.cfg.data_dir.resolve()
+    rel = target.relative_to(root).parts if target != root else ()
+    if len(rel) == 3 and rel[0] == "recordings" and rel[2] in VIRTUAL and ms.get_meeting(c.db, rel[1]):
+        return rel[1], VIRTUAL[rel[2]]
+    return None
+
+
+def _safe_path(rel: str) -> Path:
+    root = engine_ctx().cfg.data_dir.resolve()
+    target = (root / rel.lstrip("/")).resolve()
+    if target != root and root not in target.parents:
+        raise HTTPException(400, "Outside the data folder")
+    return target
+
+
+@router.get("/files")
+def list_files(request: Request, path: str = ""):
+    c = engine_ctx()
+    target = _safe_path(path)
+    if not target.exists():
+        raise HTTPException(404, "Not found")
+    if target.is_file():
+        st = target.stat()
+        return {"path": path, "entries": [{"name": target.name, "kind": "file", "size": st.st_size, "modified": st.st_mtime}]}
+    titles = {r["id"]: r["title"] for r in c.db.query("SELECT id, title FROM meetings")}
+    entries = []
+    if target.parent.name == "recordings" and (m := ms.get_meeting(c.db, target.name)):
+        from huddle_engine.services import exports
+        for name, fmt in VIRTUAL.items():
+            body, _ = exports.export(c.db, m.id, fmt)
+            if fmt == "txt" and not body.strip() or fmt == "md" and not m.notes:
+                continue
+            entries.append({"name": name, "kind": "file", "size": len(body.encode()), "modified": m.ended_at or m.created_at, "virtual": True})
+    for p in sorted(target.iterdir(), key=lambda x: (x.is_file(), x.name.lower())):
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        size = st.st_size if p.is_file() else sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+        entries.append({"name": p.name, "kind": "file" if p.is_file() else "folder", "size": size, "modified": st.st_mtime,
+                        "label": titles.get(p.name) if target.name == "recordings" else None})
+    return {"path": path, "entries": entries, "total": sum(e["size"] for e in entries), "root": str(c.cfg.data_dir)}
+
+
+@router.get("/files/download")
+def download_file(request: Request, path: str):
+    target = _safe_path(path)
+    if (v := _virtual(engine_ctx(), target)) and not target.exists():
+        from huddle_engine.services import exports
+        body, media = exports.export(engine_ctx().db, *v)
+        return Response(body, media_type=media, headers={"Content-Disposition": f'attachment; filename="{target.name}"', "Cache-Control": "no-store"})
+    if not target.is_file():
+        raise HTTPException(404, "Not found")
+    return FileResponse(target, filename=target.name, headers={"Cache-Control": "no-store"})
+
+
+@router.delete("/files")
+def delete_file(request: Request, path: str):
+    """Only loose files are deletable here: the database and model folders stay out of reach."""
+    target = _safe_path(path)
+    rel = target.relative_to(engine_ctx().cfg.data_dir.resolve())
+    if not target.is_file() or not rel.parts or rel.parts[0] not in ("recordings", "logs", "hf"):
+        raise HTTPException(400, "This file cannot be removed here")
+    target.unlink()
+    return {"ok": True}

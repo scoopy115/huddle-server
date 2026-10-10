@@ -6,6 +6,7 @@ import { STAGES } from "@/types/engine";
 import { cn } from "@/lib/utils";
 import { fmtEta } from "@/lib/format";
 import { Button } from "@/components/ui";
+import { useAi } from "@/lib/ai";
 
 const LABELS: Record<StageName, { doing: string; done: string; retry: string }> = {
   preprocessing: { doing: "Preparing audio", done: "Audio prepared", retry: "Retry from the start" },
@@ -23,6 +24,11 @@ const LABELS: Record<StageName, { doing: string; done: string; retry: string }> 
 export function ProcessingStatus({ job, onRetry, onCancel }: { job: ProcessingJob; onRetry: (stage: string) => void; onCancel?: () => void }) {
   const [showDetail, setShowDetail] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const ai = useAi();
+  // Steps that cannot run on this server (no model installed) show as inactive instead of waiting.
+  const inactive = (s: StageName): string | null =>
+    (s === "summarizing" || s === "extracting_actions") && !ai.ready ? "No AI model installed"
+    : s === "diarizing" && !ai.speakers ? "No speaker model installed" : null;
   const running = job.state === "running";
   const queued = job.state === "queued";
   const failed = STAGES.filter((s) => job.stages[s]?.status === "failed");
@@ -39,8 +45,9 @@ export function ProcessingStatus({ job, onRetry, onCancel }: { job: ProcessingJo
         </div>
       </div>
       <ol className="flex flex-col gap-1.5">
-        {STAGES.filter((s) => !(job.stages[s]?.status === "skipped" && !job.stages[s]?.error)).map((s) => {
+        {STAGES.filter((s) => !(job.stages[s]?.status === "skipped" && !job.stages[s]?.error && !job.stages[s]?.detail)).map((s) => {
           const st = job.stages[s]?.status ?? "pending";
+          const off = (st === "pending" || st === "skipped") ? (job.stages[s]?.detail || inactive(s)) : null;
           const prog = job.stages[s]?.progress;
           const l = LABELS[s];
           const pct = st === "running" && prog != null ? Math.round(prog * 100) : null;
@@ -51,10 +58,11 @@ export function ProcessingStatus({ job, onRetry, onCancel }: { job: ProcessingJo
                 {st === "done" && <Check className="h-3.5 w-3.5 text-emerald-600" />}
                 {st === "running" && <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />}
                 {st === "failed" && <AlertCircle className="h-3.5 w-3.5 text-danger" />}
-                {(st === "pending" || st === "skipped") && <Circle className="h-3.5 w-3.5 text-muted/40" />}
-                <span className={cn(st === "pending" && "text-muted", st === "skipped" && "text-muted line-through")}>
+                {(st === "pending" || st === "skipped") && <Circle className={cn("h-3.5 w-3.5", off ? "text-muted/25" : "text-muted/40")} />}
+                <span className={cn(st === "pending" && "text-muted", st === "skipped" && "text-muted", off && "text-muted/60")}>
                   {st === "done" ? l.done : l.doing}
                 </span>
+                {off && <span className="truncate text-[11px] text-muted/60">{off}</span>}
                 {pct != null && <span className="font-mono text-[11.5px] tabular-nums text-accent">{pct}%</span>}
                 {eta && <span className="text-[11.5px] text-muted">{eta}</span>}
                 {st === "running" && job.stages[s]?.detail && <span className="truncate text-[11px] text-muted">{job.stages[s]!.detail}</span>}

@@ -44,6 +44,7 @@ export interface Me { user: User | null; totpRequired: boolean; registration: "i
 export interface Client { id: number; name: string; kind: "device" | "browser"; prefix: string; createdAt: number; lastSeenAt: number | null; lastVersion: string | null; revoked: boolean; userId: number | null; userEmail: string | null; scope: "own" | "all"; aiEnabled: boolean; meetingCount: number; tokenCount: number; key: string | null }
 export interface McpToken { id: number; clientId: number; clientName: string; name: string; prefix: string; createdAt: number; expiresAt: number | null; lastUsedAt: number | null; expired: boolean; revoked: boolean; scope: "own" | "all"; token: string | null; url?: string }
 export interface Invite { id: number; prefix: string; email: string | null; createdAt: number; expiresAt: number; used: boolean; expired: boolean; token?: string; url?: string }
+export interface FileEntry { name: string; kind: "file" | "folder"; size: number; modified: number; label?: string | null; virtual?: boolean }
 export interface SpeakerModels { installed: boolean; downloading: boolean; progress: number; error: string | null }
 export interface Overview {
   name: string; version: string; engineVersion: string; fingerprint: string | null; publicUrl: string;
@@ -154,6 +155,9 @@ export const api = {
   createActionItem: (meetingId: string, body: { text: string; owner?: string | null; dueDate?: string | null }) => post<ActionItem>(`/api/meetings/${encodeURIComponent(meetingId)}/action-items`, { text: body.text, owner: body.owner ?? null, due_date: body.dueDate ?? null }),
   deleteActionItem: (id: number) => del<{ ok: boolean }>(`/api/action-items/${id}`),
   processes: () => get<ProcessesInfo>("/api/processes"),
+  reprocess: (id: string, body: { languageOverride?: string; speakerCount?: number; mode?: "meeting" | "interview" }) => post<{ ok: boolean }>(`/api/meetings/${encodeURIComponent(id)}/process`, { language_override: body.languageOverride, speaker_count: body.speakerCount, mode: body.mode }),
+  files: (path: string) => get<{ path: string; entries: FileEntry[]; total?: number; root?: string }>(`/api/files?path=${encodeURIComponent(path)}`),
+  deleteFile: (path: string) => del<{ ok: boolean }>(`/api/files?path=${encodeURIComponent(path)}`),
   updateMeetingTitle: (id: string, title: string) => patch<Meeting>(`/api/meetings/${encodeURIComponent(id)}`, { title }),
   meeting: (id: string) => get<MeetingDetail & { ownerUserId: number | null }>(`/api/meetings/${encodeURIComponent(id)}`),
   deleteMeeting: (id: string) => del<{ ok: boolean }>(`/api/meetings/${encodeURIComponent(id)}`),

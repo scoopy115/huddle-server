@@ -233,4 +233,16 @@ def test_projects_speakers_and_action_items_are_per_account(admin):
     assert any(x["id"] == it["id"] for x in u.get("/api/action-items").json())
     assert u.patch(f"/api/action-items/{it['id']}", json={"done": True}, headers=H).json()["done"] is True
     assert a.get("/api/processes").status_code == 200 and u.get("/api/processes").status_code == 403
+    assert u.get("/api/files").status_code == 403
+    files = a.get("/api/files").json()
+    assert any(e["name"] == "recordings" and e["kind"] == "folder" for e in files["entries"])
+    assert a.get("/api/files?path=../..").status_code == 400
+    rec = a.get("/api/files?path=recordings/pat-rec-00000001").json()
+    assert any(e["name"].startswith("audio") for e in rec["entries"]) and any(e["name"] == "meeting.json" for e in rec["entries"])
+    assert a.get("/api/files/download?path=recordings/pat-rec-00000001/meeting.json").status_code == 200
+    assert a.get("/api/files/download?path=huddle.db").status_code == 200
+    assert a.delete("/api/files?path=huddle.db", headers=H).status_code == 400
+    assert u.post("/api/meetings/pat-rec-00000001/process", json={"language_override": "nl", "speaker_count": 2, "mode": "interview"}, headers=H).status_code == 200
+    d = u.get("/api/meetings/pat-rec-00000001").json()["meeting"]
+    assert d["languageOverride"] == "nl" and d["speakerCountHint"] == 2 and d["mode"] == "interview"
     assert u.post("/api/ask", json={"question": "anything"}, headers=H).status_code == 403

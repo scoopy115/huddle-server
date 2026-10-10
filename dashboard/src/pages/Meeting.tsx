@@ -12,7 +12,9 @@ import { AudioPlayer, type PlayerHandle } from "@/components/AudioPlayer";
 import { ProcessingStatus } from "@/components/ProcessingStatus";
 import { TranscriptView, speakerDisplay } from "@/components/TranscriptView";
 import { ProjectPicker } from "@/components/ProjectPicker";
-import { Badge, Button, DangerDialog, Dialog, Input, SectionTitle, Spinner } from "@/components/ui";
+import { Badge, Button, DangerDialog, Dialog, Input, SectionTitle, Select, Spinner } from "@/components/ui";
+
+const LANGS: [string, string][] = [["", "Detect automatically"], ["en", "English"], ["nl", "Dutch"], ["de", "German"], ["fr", "French"], ["es", "Spanish"], ["it", "Italian"], ["pt", "Portuguese"], ["pl", "Polish"], ["sv", "Swedish"], ["da", "Danish"], ["no", "Norwegian"], ["fi", "Finnish"], ["tr", "Turkish"], ["ja", "Japanese"], ["ko", "Korean"], ["zh", "Chinese"]];
 
 const langLabel = (code: string | null) =>
   (code ?? "").split(",").filter(Boolean).map((c) => languageName(c)).join(", ");
@@ -24,6 +26,10 @@ export function MeetingPage({ id, seek, segmentId, nonce, me, onChanged }: { id:
   const back = () => navigate("/meetings");
   const [d, setD] = useState<(MeetingDetail & { ownerUserId: number | null }) | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [reprocess, setReprocess] = useState(false);
+  const [langChoice, setLangChoice] = useState("");
+  const [countChoice, setCountChoice] = useState(0);
+  const [modeChoice, setModeChoice] = useState<"meeting" | "interview">("meeting");
   const [error, setError] = useState<string | null>(null);
   const [time, setTime] = useState(0);
   const [activeSeg, setActiveSeg] = useState<number | null>(segmentId ?? null);
@@ -132,6 +138,7 @@ export function MeetingPage({ id, seek, segmentId, nonce, me, onChanged }: { id:
               <div className="animate-rise absolute right-0 top-8 z-20 w-[220px] panel p-1 shadow-xl" onMouseLeave={() => setMenu(false)}>
                 <button className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-fg/[0.05]" onClick={() => { setMenu(false); setPickProject(true); }}><Folder className="h-3.5 w-3.5 text-muted" /> Move to project…</button>
                 <button className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-fg/[0.05] disabled:opacity-45" disabled={!ai.ready} onClick={() => { setMenu(false); retry("summarizing"); }}><Sparkles className="h-3.5 w-3.5 text-muted" /> Regenerate summary</button>
+                <button className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-fg/[0.05]" onClick={() => { setMenu(false); setLangChoice(m.languageOverride ?? ""); setCountChoice(m.speakerCountHint ?? 0); setModeChoice(m.mode); setReprocess(true); }}><Languages className="h-3.5 w-3.5 text-muted" /> Reprocess meeting…</button>
                 {d.audioPath && <button className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-fg/[0.05]" onClick={async () => { setMenu(false); await api.deleteAudio(id); load(); }}><FileAudio className="h-3.5 w-3.5 text-muted" /> Delete audio only</button>}
                 <div className="my-1 border-t border-border" />
                 <button className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] text-danger hover:bg-danger/10" onClick={() => { setMenu(false); setDeleting(true); }}><Trash2 className="h-3.5 w-3.5" /> Delete meeting</button>
@@ -374,6 +381,16 @@ export function MeetingPage({ id, seek, segmentId, nonce, me, onChanged }: { id:
         <p className="mb-3 text-muted">What Huddle got wrong or should know: names, products, a decision it missed. The transcript is corrected and the notes are rewritten.</p>
         <RichTextEditor autoFocus value={contextHtml} onChange={setContextHtml}
           placeholder="For example: We did not decide on the launch date yet…" />
+      </Dialog>
+      <Dialog open={reprocess} onClose={() => setReprocess(false)} title="Reprocess meeting"
+        footer={<><Button variant="ghost" onClick={() => setReprocess(false)}>Cancel</Button><Button variant="primary" onClick={async () => { setReprocess(false); try { await api.reprocess(id, { languageOverride: langChoice, speakerCount: countChoice, mode: modeChoice }); load(); } catch (e) { setError(errorMessage(e)); } }}>Start</Button></>}>
+        <p className="mb-3 text-muted">Transcript, speakers and notes are made again. The current version stays until each step has finished.</p>
+        <label className="block text-[12px] text-muted">Spoken language</label>
+        <Select wide className="mt-1" value={langChoice} onChange={(e) => setLangChoice(e.target.value)}>{LANGS.map(([c, l]) => <option key={c} value={c}>{l}</option>)}</Select>
+        <label className="mt-3 block text-[12px] text-muted">How many people spoke?</label>
+        <Select wide className="mt-1" value={String(countChoice)} onChange={(e) => setCountChoice(Number(e.target.value))}>{[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => <option key={n} value={n}>{n === 0 ? "Detect automatically" : n === 1 ? "1 person" : `${n} people`}</option>)}</Select>
+        <label className="mt-3 block text-[12px] text-muted">Notes style</label>
+        <Select wide className="mt-1" value={modeChoice} onChange={(e) => setModeChoice(e.target.value as "meeting" | "interview")}><option value="meeting">Meeting</option><option value="interview">Interview</option></Select>
       </Dialog>
       <DangerDialog open={deleting} onClose={() => setDeleting(false)} title="Delete this meeting?" confirmLabel="Delete meeting" seconds={3} onConfirm={async () => { await api.deleteMeeting(id); onChanged(); navigate("/meetings"); }}>
         Audio, transcript and notes of “{m.title}” are removed from the server.
