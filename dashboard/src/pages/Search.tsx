@@ -39,7 +39,7 @@ export function Search({ initialQuery, nonce }: { initialQuery?: string; nonce?:
   const empty = !q.trim();
 
   return (
-    <div className="flex h-full flex-col -mx-6 -my-6">
+    <div className="flex h-full flex-col -mx-4 -my-5 md:-mx-6 md:-my-6">
       <div className="relative flex-1 overflow-y-auto">
         {/* The search field keeps its place in the tree in both layouts, so typing the first
             character does not remount it and steal focus. */}

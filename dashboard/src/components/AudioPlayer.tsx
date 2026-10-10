@@ -103,7 +103,7 @@ export function AudioPlayer({
   );
 
   return (
-    <div ref={bar} className="flex items-center gap-3 panel px-3 py-2">
+    <div ref={bar} className="flex items-center gap-2 panel px-3 py-2 sm:gap-3">
       <audio ref={audio} src={src} preload="metadata" />
       {controls}
       <span className="w-[44px] text-right font-mono text-[11px] tabular-nums text-muted">{fmtTime(time)}</span>
@@ -117,11 +117,11 @@ export function AudioPlayer({
           const a = audio.current;
           if (a) a.currentTime = Number(e.target.value);
         }}
-        className="flex-1 accent-[rgb(var(--accent))]"
+        className="min-w-0 flex-1 accent-[rgb(var(--accent))]"
       />
       <span className="w-[44px] font-mono text-[11px] tabular-nums text-muted">{fmtTime(duration)}</span>
       <button
-        className="rounded px-1.5 py-0.5 text-[11px] font-medium text-muted hover:bg-fg/[0.06]"
+        className="hidden rounded px-1.5 py-0.5 text-[11px] font-medium text-muted hover:bg-fg/[0.06] sm:block"
         onClick={() => setRate(rate === 1 ? 1.25 : rate === 1.25 ? 1.5 : rate === 1.5 ? 2 : 1)}
       >
         {rate}×

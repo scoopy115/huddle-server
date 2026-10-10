@@ -157,7 +157,7 @@ export function Record() {
   const busy = state === "recording" || state === "paused";
   if (unsupported) return <div className="text-[13px] text-muted">This browser cannot record audio. Use a current Chrome, Safari, Firefox or Edge.</div>;
   return (
-    <div className="relative -mx-6 -my-6 flex min-h-full flex-col items-center gap-7 px-6 py-12">
+    <div className="relative -mx-4 -my-5 flex min-h-full flex-col items-center gap-7 overflow-hidden px-4 py-12 md:-mx-6 md:-my-6 md:px-6">
       <div className={cn("pointer-events-none absolute inset-0 transition-opacity duration-700 wash-accent", busy ? "opacity-100" : "opacity-60")} />
       <div className="relative text-center">
         {state === "recording" && (
