@@ -1,5 +1,7 @@
-# engine source copied in by scripts/fetch-engine.sh (never committed; it lives in the Huddle repo)
-vendor/
+# engine source copied in by scripts/fetch-engine.sh (never committed; it lives in the Huddle repo).
+# The folder itself is kept so the Docker build can COPY it (empty = the build clones the engine).
+vendor/*
+!vendor/.gitkeep
 server/.venv/
 server/.venv.nosync/
 server/huddle_server/static/

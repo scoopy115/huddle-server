@@ -65,6 +65,16 @@ Huddle asks you to confirm once).
 
 **Update:** `docker compose pull && docker compose up -d`.
 
+**Coolify (or any host that builds from git):** add the repository as an application with the
+**Dockerfile** build pack (not Nixpacks or Docker Compose), port `48731`, a persistent volume on
+`/data`, and the environment variables you need (`HUDDLE_PUBLIC_URL=https://your.domain`,
+`HUDDLE_SERVER_NAME`, `HUDDLE_SYSTEM_LANGUAGE`; `HUDDLE_OLLAMA_URL=http://<ollama-service>:11434`
+when you run Ollama as a second resource). Health check: `GET /health` on 48731 with a start
+period of a minute or two (the engine's ML libraries take a while to import). Turn on
+automatic deployments (the resource's webhook in your GitHub repository, or Coolify's GitHub
+app) and every push to `main` builds and replaces the running version. The build clones the
+Huddle engine itself; pin it with the build argument `HUDDLE_ENGINE_REF`.
+
 ---
 
 ## 🧑‍💻 Development

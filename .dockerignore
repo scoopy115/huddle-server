@@ -8,3 +8,7 @@ data
 certs
 .env
 .git
+vendor/engine/.venv*
+vendor/engine/dist.nosync
+vendor/engine/build.nosync
+vendor/engine 2
