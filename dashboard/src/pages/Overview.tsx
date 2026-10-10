@@ -29,13 +29,13 @@ export function Overview() {
   return (
     <>
       <h2 className="mb-4 font-display text-[22px] font-bold tracking-tight">Overview</h2>
-      <div className="mb-3 grid grid-cols-4 gap-3">
+      <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat icon={<Mic className="h-3.5 w-3.5" />} label="Meetings" value={String(d.meetings)} hint={d.processing ? `${d.processing} processing now` : "none processing"} />
         <Stat icon={<Clock className="h-3.5 w-3.5" />} label="Processed" value={hours(d.processedMinutes)} hint={`${d.processed} meeting${d.processed === 1 ? "" : "s"}`} />
         <Stat icon={<Users className="h-3.5 w-3.5" />} label="Users" value={String(d.users)} hint={d.pendingUsers ? <Link to="/users" className="text-accent hover:underline">{d.pendingUsers} waiting for approval</Link> : undefined} />
         <Stat icon={<HardDrive className="h-3.5 w-3.5" />} label="Audio stored" value={fmtBytes(d.recordingsBytes) || "0 MB"} hint={d.maxBytes ? `cap ${fmtBytes(d.maxBytes)}` : "no cap"} />
       </div>
-      <div className="mb-4 grid grid-cols-4 gap-3">
+      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat icon={<KeyRound className="h-3.5 w-3.5" />} label="Clients" value={String(d.clients)} hint={<Link to="/clients" className="hover:text-fg">Manage</Link>} />
         <Stat icon={<Network className="h-3.5 w-3.5" />} label="MCP tokens" value={String(d.mcpTokens)} />
         <Card className="col-span-2 p-4"><Chart days={d.perDay} /></Card>

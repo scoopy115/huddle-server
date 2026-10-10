@@ -94,7 +94,7 @@ export function CommandPalette({ open, onClose, meetings }: { open: boolean; onC
           })}
           {q.trim() && rows.length === 1 && <div className="px-2.5 py-2 text-[12.5px] text-muted">No meeting titles match; press Enter to search the transcripts.</div>}
         </div>
-        <div className="flex items-center gap-4 border-t border-border px-4 py-2 text-[11px] text-muted">
+        <div className="hidden items-center gap-4 border-t border-border px-4 py-2 text-[11px] text-muted md:flex">
           <span><kbd className="rounded border border-border px-1">↑</kbd> <kbd className="rounded border border-border px-1">↓</kbd> navigate</span>
           <span><kbd className="rounded border border-border px-1">↵</kbd> open</span>
           <span><kbd className="rounded border border-border px-1">esc</kbd> close</span>

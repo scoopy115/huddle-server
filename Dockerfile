@@ -1,14 +1,15 @@
 # Huddle Server — the Huddle engine headless, with the dashboard. CPU image (x86_64 / arm64).
 # Build context needs vendor/engine (scripts/fetch-engine.sh) — the engine lives in the Huddle repo.
 
-FROM node:22-alpine AS dashboard
+# Official images through AWS's public mirror: no Docker Hub pull-rate limit on CI runners.
+FROM public.ecr.aws/docker/library/node:22-alpine AS dashboard
 WORKDIR /dash
 COPY dashboard/package.json dashboard/package-lock.json* ./
 RUN npm ci --no-audit --no-fund
 COPY dashboard/ ./
 RUN npm run build
 
-FROM python:3.11-slim-bookworm
+FROM public.ecr.aws/docker/library/python:3.11-slim-bookworm
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
     HUDDLE_DATA_DIR=/data HUDDLE_TLS_DIR=/certs HUDDLE_HOST=0.0.0.0 HUDDLE_PORT=48731 \
     HF_HOME=/data/hf HF_HUB_DISABLE_TELEMETRY=1 DO_NOT_TRACK=1

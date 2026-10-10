@@ -55,7 +55,7 @@ export function TranscriptView({
         const sp = t.speakerId != null ? byId.get(t.speakerId) : undefined;
         const color = speakerColor(sp?.colorIndex ?? 0);
         return (
-          <div key={i} className="grid grid-cols-[120px_1fr] gap-3">
+          <div key={i} className="grid gap-1 sm:grid-cols-[120px_1fr] sm:gap-3">
             <div className="pt-[2px]">
               <button
                 className={cn("group flex max-w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-[12px] font-semibold", color.text, "hover:bg-fg/[0.05]")}
@@ -66,7 +66,7 @@ export function TranscriptView({
                 <span className="truncate">{speakerDisplay(sp)}</span>
               </button>
               <button
-                className="ml-[18px] block font-mono text-[11px] tabular-nums text-muted hover:text-accent"
+                className="ml-[18px] inline-block font-mono text-[11px] tabular-nums text-muted hover:text-accent sm:block"
                 onClick={() => onSeek(t.segs[0].start)}
               >
                 {fmtTime(t.segs[0].start)}

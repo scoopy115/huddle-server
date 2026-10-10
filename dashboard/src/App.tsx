@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, CheckSquare, Folder, KeyRound, LogOut, Mic, Search as SearchIcon, Settings as SettingsIcon, ShieldCheck, Sliders, UserRound, Users as UsersIcon, LayoutDashboard, type LucideIcon } from "lucide-react";
+import { Activity, CheckSquare, Folder, KeyRound, LogOut, Menu, Mic, Search as SearchIcon, Settings as SettingsIcon, ShieldCheck, Sliders, UserRound, Users as UsersIcon, LayoutDashboard, X, type LucideIcon } from "lucide-react";
 import { api, errorMessage, setUnauthorizedHandler, type Me } from "@/lib/api";
 import type { Meeting } from "@/types/engine";
 import { AiContext } from "@/lib/ai";
@@ -27,6 +27,8 @@ import { Search } from "@/pages/Search";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl+";
+// Touch devices have no modifier keys: no shortcut hints there.
+const hasKeyboard = typeof window !== "undefined" && !window.matchMedia("(pointer: coarse)").matches;
 
 type Nav = { to: string; label: string; icon: LucideIcon; admin?: boolean; hint?: string; match?: (p: string) => boolean };
 const NAV: Nav[] = [
@@ -43,15 +45,15 @@ const NAV: Nav[] = [
   { to: "/account", label: "Account", icon: UserRound, hint: `${modKey}9` },
 ];
 
-function NavItem({ item, active, count }: { item: Nav; active: boolean; count?: number }) {
+function NavItem({ item, active, count, onNavigate }: { item: Nav; active: boolean; count?: number; onNavigate?: () => void }) {
   return (
-    <Link to={item.to} className={cn("pressable group relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium",
+    <Link to={item.to} onClick={onNavigate} className={cn("pressable group relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium",
       active ? "bg-surface text-fg shadow-[0_1px_2px_rgb(28_25_24/0.06)] dark:bg-fg/[0.07] dark:shadow-none" : "text-fg/65 hover:bg-fg/[0.04] hover:text-fg")}>
       <span className={cn("absolute -left-2 top-1/2 h-[14px] w-[3px] -translate-y-1/2 rounded-full bg-accent transition-opacity", active ? "opacity-100" : "opacity-0")} />
       <item.icon className={cn("h-4 w-4", active ? "text-accent" : "opacity-70")} />
       <span className="flex-1 text-left">{item.label}</span>
       {count ? <span className={cn("rounded-full px-1.5 text-[11px] tabular-nums", active ? "bg-accent-soft text-accent" : "bg-fg/[0.07] text-muted")}>{count}</span> : null}
-      {item.hint && !count ? <kbd className="rounded border border-border px-1 font-sans text-[10.5px] text-muted/80 opacity-0 transition-opacity group-hover:opacity-100">{item.hint}</kbd> : null}
+      {item.hint && hasKeyboard && !count ? <kbd className="rounded border border-border px-1 font-sans text-[10.5px] text-muted/80 opacity-0 transition-opacity group-hover:opacity-100">{item.hint}</kbd> : null}
     </Link>
   );
 }
@@ -67,6 +69,7 @@ export function App() {
   const [ai, setAi] = useState({ ready: false, model: null as string | null });
   const [meetings, setMeetings] = useState<Meeting[] | null>(null);
   const [palette, setPalette] = useState(false);
+  const [drawer, setDrawer] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -135,29 +138,44 @@ export function App() {
   const active = nav.find((n) => (n.match ? n.match(path) : path.startsWith(n.to)))?.to ?? (isAdmin ? "/" : "/meetings");
   const recording = path === "/record";
 
+  const sidebar = (
+    <>
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(70%_60%_at_30%_0%,rgb(var(--accent)/0.12),transparent_70%)]" />
+      <div className="relative flex items-center justify-between px-4 pb-8 pt-7 md:justify-center">
+        <img src={logo} alt="Huddle" className="h-9 w-auto select-none" draggable={false} />
+        <button className="md:hidden" onClick={() => setDrawer(false)} aria-label="Close menu"><X className="h-5 w-5 text-muted" /></button>
+      </div>
+      <nav className="relative flex flex-col gap-0.5 px-3">
+        {nav.map((n) => <NavItem key={n.to} item={n} active={active === n.to} count={n.to === "/actions" ? openActions : n.to === "/processes" ? running : undefined} onNavigate={() => setDrawer(false)} />)}
+      </nav>
+      <div className="flex-1" />
+      <div className="relative px-3 pb-3">
+        <button onClick={() => { setDrawer(false); navigate("/record"); }} className={cn("pressable flex w-full items-center justify-center gap-2 rounded-full bg-record px-3 py-2.5 text-[13px] font-semibold text-white glow-accent", !recording && "hover:brightness-110")}>
+          <Mic className="h-4 w-4 text-white" /> New Recording
+        </button>
+        <div className="mt-3 border-t border-border pt-3 text-[12px] text-muted">
+          <div className="truncate text-fg/80">{me.user.name || me.user.email}</div>
+          <div className="text-[11px]">{isAdmin ? "Admin" : "User"}</div>
+          <button className="mt-1.5 inline-flex items-center gap-1 hover:text-fg" onClick={logout}><LogOut className="h-3 w-3" /> Log out</button>
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <AiContext.Provider value={ai}>
-      <div className="flex h-full">
-        <aside className="relative flex h-full w-[224px] shrink-0 flex-col border-r border-border bg-sidebar">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(70%_60%_at_30%_0%,rgb(var(--accent)/0.12),transparent_70%)]" />
-          <div className="relative flex items-center justify-center px-4 pb-8 pt-7"><img src={logo} alt="Huddle" className="h-9 w-auto select-none" draggable={false} /></div>
-          <nav className="relative flex flex-col gap-0.5 px-3">
-            {nav.map((n) => <NavItem key={n.to} item={n} active={active === n.to} count={n.to === "/actions" ? openActions : n.to === "/processes" ? running : undefined} />)}
-          </nav>
-          <div className="flex-1" />
-          <div className="relative px-3 pb-3">
-            <button onClick={() => navigate("/record")} className={cn("pressable flex w-full items-center justify-center gap-2 rounded-full bg-record px-3 py-2.5 text-[13px] font-semibold text-white glow-accent", !recording && "hover:brightness-110")}>
-              <Mic className="h-4 w-4 text-white" /> New Recording
-            </button>
-            <div className="mt-3 border-t border-border pt-3 text-[12px] text-muted">
-              <div className="truncate text-fg/80">{me.user.name || me.user.email}</div>
-              <div className="text-[11px]">{isAdmin ? "Admin" : "User"}</div>
-              <button className="mt-1.5 inline-flex items-center gap-1 hover:text-fg" onClick={logout}><LogOut className="h-3 w-3" /> Log out</button>
-            </div>
-          </div>
+      <div className="flex h-full flex-col md:flex-row">
+        {/* Phones and small tablets: a top bar with a menu button; the sidebar becomes a drawer. */}
+        <header className="flex h-[52px] shrink-0 items-center justify-between border-b border-border bg-sidebar px-4 md:hidden">
+          <img src={logo} alt="Huddle" className="h-7 w-auto" draggable={false} />
+          <button onClick={() => setDrawer(true)} aria-label="Menu" className="rounded-lg p-1.5 hover:bg-fg/[0.06]"><Menu className="h-5 w-5" /></button>
+        </header>
+        {drawer && <div className="fixed inset-0 z-40 bg-black/30 md:hidden" onClick={() => setDrawer(false)} />}
+        <aside className={cn("fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col border-r border-border bg-sidebar transition-transform md:static md:z-auto md:h-full md:w-[224px] md:shrink-0 md:translate-x-0", drawer ? "translate-x-0" : "-translate-x-full")}>
+          {sidebar}
         </aside>
         <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[860px] px-6 py-6">{page}</div>
+          <div className="mx-auto max-w-[860px] px-4 py-5 md:px-6 md:py-6">{page}</div>
         </main>
         <CommandPalette open={palette} onClose={() => setPalette(false)} meetings={meetings ?? []} />
         <Dialog open={askTotp} onClose={dismissTotp} title="Protect this account?" width={440}

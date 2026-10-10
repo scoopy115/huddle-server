@@ -61,7 +61,7 @@ Input.displayName = "Input";
 /** An obvious dropdown: bordered field with a chevron, one fixed width everywhere in Settings. */
 export function Select({ className, children, wide, ...props }: React.SelectHTMLAttributes<HTMLSelectElement> & { wide?: boolean }) {
   return (
-    <div className={cn("relative", wide ? "w-[300px]" : "w-[240px]", className)}>
+    <div className={cn("relative min-w-0 max-w-full", wide ? "w-[300px]" : "w-[240px]", className)}>
       <select
         className={cn(
           "h-8 w-full appearance-none rounded-lg border border-border bg-surface pl-2.5 pr-8 text-[13px] shadow-sm",

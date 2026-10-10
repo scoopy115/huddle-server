@@ -174,7 +174,7 @@ export function Record() {
       <canvas ref={canvas} className="relative h-[72px] w-full max-w-[560px]" />
       {!busy ? (
         <div className="panel relative flex w-full max-w-[460px] flex-col gap-3 p-4">
-          <label className="flex items-center justify-between gap-3 text-[13px]">
+          <label className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[13px]">
             <span className="inline-flex items-center gap-2 text-muted"><Mic className="h-3.5 w-3.5" /> Microphone</span>
             <Select value={device} onChange={(e) => setDevice(e.target.value)}>
               <option value="">Default microphone</option>
@@ -182,7 +182,7 @@ export function Record() {
             </Select>
           </label>
           {canShare && (
-            <label className="flex items-center justify-between gap-3 text-[13px]">
+            <label className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[13px]">
               <span className="inline-flex items-center gap-2 text-muted" title="Chrome and Edge: the audio of a tab or screen you pick when recording starts"><Monitor className="h-3.5 w-3.5" /> System audio</span>
               <Select value={systemAudio ? "on" : "off"} onChange={(e) => setSystemAudio(e.target.value === "on")}>
                 <option value="off">Off</option>
@@ -190,18 +190,18 @@ export function Record() {
               </Select>
             </label>
           )}
-          <label className="flex items-center justify-between gap-3 text-[13px]">
+          <label className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[13px]">
             <span className="inline-flex items-center gap-2 text-muted"><Languages className="h-3.5 w-3.5" /> Spoken language</span>
             <Select value={language} onChange={(e) => setLanguage(e.target.value)}>{LANGS.map(([c, l]) => <option key={c} value={c}>{l}</option>)}</Select>
           </label>
-          <label className="flex items-center justify-between gap-3 text-[13px]">
+          <label className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[13px]">
             <span className="inline-flex items-center gap-2 text-muted"><NotebookPen className="h-3.5 w-3.5" /> Notes</span>
             <div className="flex gap-2">
-              <Select className="!w-[116px]" value={mode} onChange={(e) => setMode(e.target.value as "meeting" | "interview")}><option value="meeting">Meeting</option><option value="interview">Interview</option></Select>
-              <Select className="!w-[116px]" value={notesLanguage} onChange={(e) => setNotesLanguage(e.target.value)}>{NOTES_LANGS.map(([c, l]) => <option key={c} value={c}>{l}</option>)}</Select>
+              <Select className="!w-[110px]" value={mode} onChange={(e) => setMode(e.target.value as "meeting" | "interview")}><option value="meeting">Meeting</option><option value="interview">Interview</option></Select>
+              <Select className="!w-[110px]" value={notesLanguage} onChange={(e) => setNotesLanguage(e.target.value)}>{NOTES_LANGS.map(([c, l]) => <option key={c} value={c}>{l}</option>)}</Select>
             </div>
           </label>
-          <label className="flex items-center justify-between gap-3 text-[13px]">
+          <label className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[13px]">
             <span className="inline-flex items-center gap-2 text-muted"><Users className="h-3.5 w-3.5" /> People speaking</span>
             <Select value={String(speakers)} onChange={(e) => setSpeakers(Number(e.target.value))}>{[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n === 0 ? "Detect automatically" : n === 1 ? "1 person" : `${n} people`}</option>)}</Select>
           </label>
