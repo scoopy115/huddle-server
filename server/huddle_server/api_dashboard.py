@@ -17,7 +17,7 @@ from huddle_engine.services import search as search_svc
 from huddle_engine.services import transcripts
 from pydantic import BaseModel
 
-from . import __version__, access, auth, certs, clients, mcp_tokens
+from . import __version__, access, auth, certs, clients, mcp_tokens, playback
 from .engine_bridge import capabilities, engine_ctx, engine_version, resolver
 
 router = APIRouter(prefix="/api")
@@ -521,9 +521,14 @@ def meeting_detail(request: Request, meeting_id: str):
     _meeting_or_404(request, meeting_id)
     c = engine_ctx()
     out = ms.get_detail(c.db, meeting_id).model_dump(by_alias=True)
-    out["audioPath"] = ms.audio_path(c.db, c.cfg, meeting_id)
+    src = ms.audio_path(c.db, c.cfg, meeting_id)
+    out["audioPath"] = str(playback.path_for(src, meeting_id)) if src else None
     out["ownerUserId"] = clients.owner_user_of_meeting(request.app.state.db, meeting_id)
     return out
+
+
+MEDIA = {".m4a": "audio/mp4", ".mp4": "audio/mp4", ".wav": "audio/wav", ".flac": "audio/flac", ".webm": "audio/webm",
+         ".ogg": "audio/ogg", ".mp3": "audio/mpeg"}
 
 
 class MeetingPatch(BaseModel):
@@ -543,10 +548,13 @@ def patch_meeting(request: Request, meeting_id: str, body: MeetingPatch):
 def meeting_audio(request: Request, meeting_id: str):
     _meeting_or_404(request, meeting_id)
     c = engine_ctx()
-    path = ms.audio_path(c.db, c.cfg, meeting_id)
-    if not path:
+    src = ms.audio_path(c.db, c.cfg, meeting_id)
+    if not src:
         raise HTTPException(404, "Audio not found")
-    return FileResponse(path, media_type="audio/wav")
+    path = playback.path_for(src, meeting_id)
+    media = MEDIA.get(path.suffix.lower(), "application/octet-stream")
+    # cacheable for the browser's media cache: the id in the url changes when the file does
+    return FileResponse(path, media_type=media, headers={"Cache-Control": "private, max-age=86400"})
 
 
 @router.delete("/meetings/{meeting_id}")
@@ -563,6 +571,7 @@ def delete_meeting(request: Request, meeting_id: str):
 def delete_audio(request: Request, meeting_id: str):
     _meeting_or_404(request, meeting_id, write=True)
     c = engine_ctx()
+    playback.remove(ms.audio_path(c.db, c.cfg, meeting_id))
     return {"freedBytes": ms.delete_audio(c.db, c.cfg, meeting_id)}
 
 

@@ -41,7 +41,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   if (!env || !speakers) return <div className="flex h-full items-center justify-center"><Spinner /></div>;
 
   const installedList = (task: "transcription" | "llm") => env.models.filter((m) => m.task === task && m.compatible && (task !== "llm" || m.source === "ollama"));
-  const candsFor = (task: "transcription" | "llm") => cands.filter((c) => c.task === task && (task !== "transcription" || (!c.id.includes("mlx") && !c.id.startsWith("parakeet:")) || env.hardware.appleSilicon))
+  const candsFor = (task: "transcription" | "llm") => cands.filter((c) => c.task === task && (task !== "transcription" || !c.id.includes("mlx") || env.hardware.appleSilicon))
     .sort((a, b) => Number(b.recommended) - Number(a.recommended));
   const isInstalled = (c: DownloadCandidate) => c.task === "llm" ? env.models.some((m) => m.source === "ollama" && m.name === c.url)
     : env.models.some((m) => m.task === "transcription" && m.source === "our_app" && m.id === `our_app:${c.url}`);

@@ -32,15 +32,18 @@ export function ProcessingStatus({ job, onRetry, onCancel }: { job: ProcessingJo
   const running = job.state === "running";
   const queued = job.state === "queued";
   const failed = STAGES.filter((s) => job.stages[s]?.status === "failed");
+  const stopped = job.state === "failed" && !failed.length;   // cancelled: nothing broke, steps are left pending
+  const nextPending = STAGES.find((s) => job.stages[s]?.status === "pending");
 
   return (
     <div className="panel p-4">
       <div className="mb-3 flex items-center justify-between">
         <div className="text-[13px] font-semibold">
-          {cancelling && (running || queued) ? "Cancelling, finishing the current step" : queued ? "Waiting for another meeting to finish" : running ? "Processing meeting" : failed.length ? "Processing needs attention" : "Processed"}
+          {cancelling && (running || queued) ? "Cancelling, finishing the current step" : queued ? "Waiting for another meeting to finish" : running ? "Processing meeting" : failed.length ? "Processing needs attention" : stopped ? "Processing stopped" : "Processed"}
         </div>
         <div className="flex items-center gap-2">
           {queued && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted" />}
+          {stopped && nextPending && <Button size="sm" variant="secondary" onClick={() => onRetry(nextPending)}><RotateCw className="h-3 w-3" /> Continue</Button>}
           {(running || queued) && onCancel && !cancelling && <Button size="sm" variant="ghost" onClick={() => { setCancelling(true); onCancel(); }} title="Cancel — keeps the previous version">Cancel</Button>}
         </div>
       </div>

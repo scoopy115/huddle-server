@@ -246,3 +246,17 @@ def test_projects_speakers_and_action_items_are_per_account(admin):
     d = u.get("/api/meetings/pat-rec-00000001").json()["meeting"]
     assert d["languageOverride"] == "nl" and d["speakerCountHint"] == 2 and d["mode"] == "interview"
     assert u.post("/api/ask", json={"question": "anything"}, headers=H).status_code == 403
+
+
+def test_playback_rendition(tmp_path):
+    import numpy as np
+    import soundfile as sf
+
+    from huddle_server import playback
+    src = tmp_path / "processed.wav"
+    sf.write(src, (np.sin(np.arange(16000 * 3) / 10) * 0.3).astype("float32"), 16000)
+    playback.transcode(src, src.with_name(playback.NAME))
+    out = src.with_name(playback.NAME)
+    assert out.exists() and 0 < out.stat().st_size < src.stat().st_size
+    playback.remove(str(src))
+    assert not out.exists()

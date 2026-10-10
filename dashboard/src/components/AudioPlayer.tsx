@@ -33,6 +33,9 @@ export function AudioPlayer({
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(durationHint ?? 0);
   const [rate, setRate] = useState(1);
+  // While the thumb is dragged only the label follows; the seek happens on release.
+  const [scrub, setScrub] = useState<number | null>(null);
+  const last = useRef({ t: 0, playing: false });
   // The path changes once the server has prepared the audio; that reloads the element.
   const src = path ? `/api/meetings/${encodeURIComponent(meetingId)}/audio?v=${encodeURIComponent(path.split("/").pop() ?? "")}` : null;
 
@@ -51,20 +54,39 @@ export function AudioPlayer({
     const a = audio.current;
     if (!a) return;
     const onT = () => {
+      last.current.t = a.currentTime;
       setTime(a.currentTime);
       onTime?.(a.currentTime);
     };
+    const onPlay = () => { last.current.playing = true; setPlaying(true); };
+    const onPause = () => { last.current.playing = false; setPlaying(false); };
     const onD = () => setDuration(isFinite(a.duration) ? a.duration : durationHint ?? 0);
     a.addEventListener("timeupdate", onT);
     a.addEventListener("durationchange", onD);
-    a.addEventListener("play", () => setPlaying(true));
-    a.addEventListener("pause", () => setPlaying(false));
-    a.addEventListener("ended", () => setPlaying(false));
+    a.addEventListener("play", onPlay);
+    a.addEventListener("pause", onPause);
+    a.addEventListener("ended", onPause);
     return () => {
       a.removeEventListener("timeupdate", onT);
       a.removeEventListener("durationchange", onD);
+      a.removeEventListener("play", onPlay);
+      a.removeEventListener("pause", onPause);
+      a.removeEventListener("ended", onPause);
     };
   }, [onTime, durationHint, src]);
+
+  // The server swaps in a compact copy of the audio once it is ready; keep the position.
+  useEffect(() => {
+    const a = audio.current;
+    const { t, playing } = last.current;
+    if (!a || t <= 0) return;
+    const resume = () => {
+      a.currentTime = t;
+      if (playing) a.play().catch(() => {});
+    };
+    a.addEventListener("loadedmetadata", resume, { once: true });
+    return () => a.removeEventListener("loadedmetadata", resume);
+  }, [src]);
 
   useEffect(() => {
     if (audio.current) audio.current.playbackRate = rate;
@@ -88,6 +110,11 @@ export function AudioPlayer({
     if (a.paused) a.play().catch(() => {});
     else a.pause();
   };
+  const commitScrub = () => {
+    const a = audio.current;
+    if (a && scrub != null) a.currentTime = scrub;
+    setScrub(null);
+  };
   const skip = (d: number) => {
     const a = audio.current;
     if (a) a.currentTime = Math.min(Math.max(0, a.currentTime + d), duration || a.currentTime + d);
@@ -107,17 +134,17 @@ export function AudioPlayer({
     <div ref={bar} className="flex items-center gap-2 panel px-3 py-2 sm:gap-3">
       <audio ref={audio} src={src} preload="metadata" />
       {controls}
-      <span className="w-[44px] text-right font-mono text-[11px] tabular-nums text-muted">{fmtTime(time)}</span>
+      <span className="w-[44px] text-right font-mono text-[11px] tabular-nums text-muted">{fmtTime(scrub ?? time)}</span>
       <input
         type="range"
         min={0}
         max={duration || 1}
         step={0.1}
-        value={Math.min(time, duration || 1)}
-        onChange={(e) => {
-          const a = audio.current;
-          if (a) a.currentTime = Number(e.target.value);
-        }}
+        value={Math.min(scrub ?? time, duration || 1)}
+        onChange={(e) => setScrub(Number(e.target.value))}
+        onPointerUp={commitScrub}
+        onKeyUp={commitScrub}
+        onTouchEnd={commitScrub}
         className="min-w-0 flex-1 accent-[rgb(var(--accent))]"
       />
       <span className="w-[44px] font-mono text-[11px] tabular-nums text-muted">{fmtTime(duration)}</span>
