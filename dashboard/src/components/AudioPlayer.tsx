@@ -33,7 +33,8 @@ export function AudioPlayer({
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(durationHint ?? 0);
   const [rate, setRate] = useState(1);
-  const src = path ? `/api/meetings/${encodeURIComponent(meetingId)}/audio` : null;
+  // The path changes once the server has prepared the audio; that reloads the element.
+  const src = path ? `/api/meetings/${encodeURIComponent(meetingId)}/audio?v=${encodeURIComponent(path.split("/").pop() ?? "")}` : null;
 
   useEffect(() => {
     handleRef.current = {
@@ -78,7 +79,7 @@ export function AudioPlayer({
   }, [src]);
 
   if (!src) {
-    return <div className="rounded-lg border border-dashed border-border px-4 py-3 text-[12px] text-muted">Audio not available for this meeting.</div>;
+    return <div className="rounded-lg border border-dashed border-border px-4 py-3 text-[12px] text-muted">Audio not available yet.</div>;
   }
 
   const toggle = () => {
