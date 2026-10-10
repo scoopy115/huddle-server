@@ -22,6 +22,7 @@ const LABELS: Record<StageName, { doing: string; done: string; retry: string }> 
 
 export function ProcessingStatus({ job, onRetry, onCancel }: { job: ProcessingJob; onRetry: (stage: string) => void; onCancel?: () => void }) {
   const [showDetail, setShowDetail] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const running = job.state === "running";
   const queued = job.state === "queued";
   const failed = STAGES.filter((s) => job.stages[s]?.status === "failed");
@@ -30,11 +31,11 @@ export function ProcessingStatus({ job, onRetry, onCancel }: { job: ProcessingJo
     <div className="panel p-4">
       <div className="mb-3 flex items-center justify-between">
         <div className="text-[13px] font-semibold">
-          {queued ? "Waiting for another meeting to finish" : running ? "Processing meeting" : failed.length ? "Processing needs attention" : "Processed"}
+          {cancelling && (running || queued) ? "Cancelling, finishing the current step" : queued ? "Waiting for another meeting to finish" : running ? "Processing meeting" : failed.length ? "Processing needs attention" : "Processed"}
         </div>
         <div className="flex items-center gap-2">
           {queued && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted" />}
-          {(running || queued) && onCancel && <Button size="sm" variant="ghost" onClick={onCancel} title="Cancel — keeps the previous version">Cancel</Button>}
+          {(running || queued) && onCancel && !cancelling && <Button size="sm" variant="ghost" onClick={() => { setCancelling(true); onCancel(); }} title="Cancel — keeps the previous version">Cancel</Button>}
         </div>
       </div>
       <ol className="flex flex-col gap-1.5">

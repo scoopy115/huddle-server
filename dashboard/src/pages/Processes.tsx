@@ -15,13 +15,14 @@ const STAGE_WORD: Record<string, string> = {
 export function Processes({ onChanged }: { onChanged: () => void }) {
   const [info, setInfo] = useState<ProcessesInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cancelled, setCancelled] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    const tick = () => api.processes().then(setInfo).catch((e) => setError(errorMessage(e)));
+    const tick = () => api.processes().then((i) => setInfo({ ...i, jobs: i.jobs.filter((j) => !cancelled.has(j.meetingId)) })).catch((e) => setError(errorMessage(e)));
     tick();
     const t = setInterval(tick, 1500);
     return () => clearInterval(t);
-  }, []);
+  }, [cancelled]);
 
   const total = (info?.jobs.length ?? 0) + (info?.live.length ?? 0) + (info?.downloads.length ?? 0);
 
@@ -53,7 +54,7 @@ export function Processes({ onChanged }: { onChanged: () => void }) {
                           </div>
                           {pct != null && <div className="mt-1.5 h-1 w-full overflow-hidden rounded bg-fg/10"><div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} /></div>}
                         </div>
-                        <Button size="sm" variant="ghost" title="Cancel — keeps the previous version" onClick={async () => { await api.cancelProcessing(j.meetingId); onChanged(); }}><X className="h-3.5 w-3.5" /> Cancel</Button>
+                        <Button size="sm" variant="ghost" title="Cancel — keeps the previous version" onClick={async () => { setCancelled((c) => new Set(c).add(j.meetingId)); setInfo((i) => i && { ...i, jobs: i.jobs.filter((x) => x.meetingId !== j.meetingId) }); await api.cancelProcessing(j.meetingId); onChanged(); }}><X className="h-3.5 w-3.5" /> Cancel</Button>
                       </div>
                     );
                   })}
