@@ -58,9 +58,10 @@ Then open **http://\<host\>:48731**, create the admin account and follow the set
 By hand: copy [`docker-compose.yml`](docker-compose.yml) and [`.env.example`](.env.example)
 (as `.env`) into a folder and run `docker compose up -d`.
 
-**TLS:** put your own reverse proxy in front, or set `COMPOSE_PROFILES=tls` in `.env` for the
-built-in one (Let's Encrypt with `HUDDLE_DOMAIN`, otherwise a certificate Huddle asks you to
-confirm once).
+**TLS:** put your own reverse proxy in front (Coolify, Traefik, nginx, …), or add the built-in
+one: `docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d` with
+`HUDDLE_TLS_DIR=/certs` in `.env` (Let's Encrypt with `HUDDLE_DOMAIN`, otherwise a certificate
+Huddle asks you to confirm once).
 
 **Update:** `docker compose pull && docker compose up -d`.
 
@@ -81,7 +82,8 @@ HUDDLE_DATA_DIR=/tmp/hs ../server/.venv.nosync/bin/huddle-server serve     # htt
 
 `npm run dev` in `dashboard/` serves the UI on :5180 and proxies the API to :48731.
 
-Docker image: `scripts/fetch-engine.sh && docker build -t huddle-server:local .`. The GitHub
+Docker image: `scripts/fetch-engine.sh && docker build -t huddle-server:local .`, then
+`HUDDLE_IMAGE=huddle-server:local docker compose up -d`. The GitHub
 workflow publishes `ghcr.io/scoopy115/huddle-server` on every push to `main` and on `v*` tags.
 
 ---

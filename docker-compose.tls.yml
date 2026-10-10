@@ -1,0 +1,28 @@
+# Optional built-in TLS proxy. Use together with the main file:
+#   docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+# or put COMPOSE_FILE=docker-compose.yml:docker-compose.tls.yml in .env (install.sh does this).
+# Needs HUDDLE_TLS_DIR=/certs in .env. With HUDDLE_DOMAIN set, Caddy uses Let's Encrypt (ports 80
+# and 443 must reach this host); otherwise the server's own certificate.
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    command: caddy run --config /etc/caddy/${HUDDLE_CADDYFILE:-Caddyfile.selfsigned} --adapter caddyfile
+    ports:
+      - "${HUDDLE_TLS_PORT:-443}:443"
+      - "${HUDDLE_TLS_DASHBOARD_PORT:-8443}:8443"
+      - "${HUDDLE_HTTP_PORT:-80}:80"
+    environment:
+      HUDDLE_DOMAIN: ${HUDDLE_DOMAIN:-}
+    volumes:
+      - ./caddy:/etc/caddy:ro
+      - caddy-data:/data
+      - caddy-config:/config
+      - certs:/certs:ro
+    depends_on:
+      - huddle
+
+volumes:
+  caddy-data:
+  caddy-config:

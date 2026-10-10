@@ -19,7 +19,7 @@ docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is missing (doc
 
 mkdir -p "$DIR/caddy"
 cd "$DIR"
-for f in docker-compose.yml caddy/Caddyfile.selfsigned caddy/Caddyfile.domain .env.example; do
+for f in docker-compose.yml docker-compose.tls.yml caddy/Caddyfile.selfsigned caddy/Caddyfile.domain .env.example; do
   curl -fsSL "$RAW/$f" -o "$f" || die "could not download $f"
 done
 
@@ -32,7 +32,7 @@ if [ ! -f .env ]; then
   sed -i.bak "s/^HUDDLE_SERVER_NAME=.*/HUDDLE_SERVER_NAME=$(esc "$NAME")/; s/^HUDDLE_PORT=.*/HUDDLE_PORT=$PORT/" .env
   case "$TLS" in y|Y|yes|1)
     DOMAIN="${HUDDLE_DOMAIN:-$(ask 'Public domain for Let'"'"'s Encrypt (empty = self-signed)' '')}"
-    printf 'COMPOSE_PROFILES=tls\nHUDDLE_TLS_DIR=/certs\nHUDDLE_DOMAIN=%s\nHUDDLE_CADDYFILE=%s\n' "$DOMAIN" "$([ -n "$DOMAIN" ] && echo Caddyfile.domain || echo Caddyfile.selfsigned)" >> .env ;;
+    printf 'COMPOSE_FILE=docker-compose.yml:docker-compose.tls.yml\nHUDDLE_TLS_DIR=/certs\nHUDDLE_DOMAIN=%s\nHUDDLE_CADDYFILE=%s\n' "$DOMAIN" "$([ -n "$DOMAIN" ] && echo Caddyfile.domain || echo Caddyfile.selfsigned)" >> .env ;;
   esac
   rm -f .env.bak
 fi
@@ -46,7 +46,7 @@ HOST="${HUDDLE_DOMAIN:-$(hostname -I 2>/dev/null | awk '{print $1}' || hostname)
 [ -z "$HOST" ] && HOST="$(hostname)"
 say ""
 say "Huddle Server is starting."
-if [ "${COMPOSE_PROFILES:-}" = "tls" ]; then
+if [ -n "${HUDDLE_TLS_DIR:-}" ]; then
   say "  Dashboard : https://$HOST:${HUDDLE_TLS_DASHBOARD_PORT:-8443}"
   say "  App URL   : https://$HOST:${HUDDLE_TLS_PORT:-443}   (Huddle → Settings → Server)"
   [ -z "${HUDDLE_DOMAIN:-}" ] && say "  Self-signed certificate: your browser warns once; the Huddle app asks you to confirm the fingerprint shown in the dashboard."
