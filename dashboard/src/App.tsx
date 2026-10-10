@@ -142,7 +142,7 @@ export function App() {
     <>
       <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(70%_60%_at_30%_0%,rgb(var(--accent)/0.12),transparent_70%)]" />
       <div className="relative flex items-center justify-between px-4 pb-8 pt-7 md:justify-center">
-        <img src={logo} alt="Huddle" className="h-9 w-auto select-none" draggable={false} />
+        <Link to="/meetings" onClick={() => setDrawer(false)} title="Meetings"><img src={logo} alt="Huddle" className="h-9 w-auto select-none" draggable={false} /></Link>
         <button className="md:hidden" onClick={() => setDrawer(false)} aria-label="Close menu"><X className="h-5 w-5 text-muted" /></button>
       </div>
       <nav className="relative flex flex-col gap-0.5 px-3">
@@ -167,7 +167,7 @@ export function App() {
       <div className="flex h-full flex-col md:flex-row">
         {/* Phones and small tablets: a top bar with a menu button; the sidebar becomes a drawer. */}
         <header className="flex h-[52px] shrink-0 items-center justify-between border-b border-border bg-sidebar px-4 md:hidden">
-          <img src={logo} alt="Huddle" className="h-7 w-auto" draggable={false} />
+          <Link to="/meetings" title="Meetings"><img src={logo} alt="Huddle" className="h-7 w-auto" draggable={false} /></Link>
           <button onClick={() => setDrawer(true)} aria-label="Menu" className="rounded-lg p-1.5 hover:bg-fg/[0.06]"><Menu className="h-5 w-5" /></button>
         </header>
         {drawer && <div className="fixed inset-0 z-40 bg-black/30 md:hidden" onClick={() => setDrawer(false)} />}

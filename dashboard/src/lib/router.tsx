@@ -20,8 +20,8 @@ export function navigate(path: string) {
   window.dispatchEvent(new Event("huddle:navigate"));
 }
 
-export function Link({ to, className, children, onClick }: { to: string; className?: string; children: React.ReactNode; onClick?: () => void }) {
+export function Link({ to, className, children, onClick, title }: { to: string; className?: string; children: React.ReactNode; onClick?: () => void; title?: string }) {
   return (
-    <a href={to} className={className} onClick={(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); onClick?.(); navigate(to); }}>{children}</a>
+    <a href={to} className={className} title={title} onClick={(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); onClick?.(); navigate(to); }}>{children}</a>
   );
 }
