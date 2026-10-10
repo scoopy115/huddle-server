@@ -175,7 +175,7 @@ export function App() {
           {sidebar}
         </aside>
         <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[860px] px-4 py-5 md:px-6 md:py-6">{page}</div>
+          <div className="mx-auto min-h-full max-w-[860px] px-4 py-5 md:px-6 md:py-6">{page}</div>
         </main>
         <CommandPalette open={palette} onClose={() => setPalette(false)} meetings={meetings ?? []} />
         <Dialog open={askTotp} onClose={dismissTotp} title="Protect this account?" width={440}

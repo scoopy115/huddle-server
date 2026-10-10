@@ -1,6 +1,7 @@
 # Huddle Server. Copy .env.example to .env (or let install.sh do it), then: docker compose up -d
 #
-# Everything on one port (HUDDLE_PORT, default 48731, plain HTTP): dashboard, client API, MCP.
+# Everything on one port (48731, plain HTTP): dashboard, client API, MCP. Another host port: change
+# the left side of "48731:48731" (install.sh does this for you).
 # Put your own reverse proxy in front for TLS. No proxy? Add docker-compose.tls.yml (see README).
 
 services:
@@ -16,7 +17,7 @@ services:
       HUDDLE_PUBLIC_URL: ${HUDDLE_PUBLIC_URL:-}
       HUDDLE_TLS_DIR: ${HUDDLE_TLS_DIR:-}
     ports:
-      - "${HUDDLE_PORT:-48731}:48731"
+      - "48731:48731"
     volumes:
       - huddle-data:/data
       - certs:/certs

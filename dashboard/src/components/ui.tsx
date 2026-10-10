@@ -133,8 +133,8 @@ export function BrandMark({ className }: { className?: string }) {
 
 export function EmptyState({ icon, title, body, action }: { icon?: React.ReactNode; title: string; body?: string; action?: React.ReactNode }) {
   return (
-    <div className="relative flex h-full flex-col items-center justify-center gap-2 overflow-hidden p-10 text-center">
-      <BrandMark className="pointer-events-none absolute left-1/2 top-1/2 h-[340px] w-[340px] -translate-x-1/2 -translate-y-[58%] text-accent opacity-[0.045] dark:opacity-[0.07]" />
+    <div className="relative flex min-h-[60vh] flex-col items-center justify-center gap-2 overflow-hidden p-10 text-center">
+      <BrandMark className="pointer-events-none absolute left-1/2 top-1/2 h-[300px] w-[300px] -translate-x-1/2 -translate-y-1/2 text-accent opacity-[0.045] dark:opacity-[0.07]" />
       {icon && <div className="relative mb-1 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-white glow-accent [&_svg]:text-white">{icon}</div>}
       <div className="relative font-display text-[17px] font-bold tracking-tight">{title}</div>
       {body && <div className="relative max-w-sm text-[13px] text-muted">{body}</div>}

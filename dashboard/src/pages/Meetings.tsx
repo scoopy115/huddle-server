@@ -15,6 +15,7 @@ export function Meetings({ meetings, onChanged }: { meetings: Meeting[] | null; 
   const [projects, setProjects] = useState<Project[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState(0);
   const file = useRef<HTMLInputElement>(null);
   useEffect(() => { api.projects().then(setProjects).catch(() => {}); }, [meetings]);
   useEffect(() => { if (project && project !== NONE && !projects.some((p) => p.id === project)) setProject(ALL); }, [projects, project]);
@@ -33,7 +34,8 @@ export function Meetings({ meetings, onChanged }: { meetings: Meeting[] | null; 
       const d = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");
       const id = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-imp${Math.random().toString(16).slice(2, 8)}`;
-      const res = await api.record({ id, startedAt: f.lastModified / 1000, durationSec: 0, format: ext, title: f.name.replace(/\.[^.]+$/, ""), inputDevice: "Imported file" }, f, f.name);
+      setProgress(0);
+      const res = await api.record({ id, startedAt: f.lastModified / 1000, durationSec: 0, format: ext, title: f.name.replace(/\.[^.]+$/, ""), inputDevice: "Imported file" }, f, f.name, setProgress);
       onChanged();
       navigate(`/meetings/${encodeURIComponent(res.id)}`);
     } catch (e) { setError(errorMessage(e)); } finally { setImporting(false); }
@@ -53,7 +55,7 @@ export function Meetings({ meetings, onChanged }: { meetings: Meeting[] | null; 
         )}
         <div className="relative w-[220px]"><SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" /><Input className="pl-8" placeholder="Filter meetings" value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
         <input ref={file} type="file" accept=".wav,.mp3,.m4a,.mp4,.webm,.flac,.ogg,audio/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importFile(f); e.target.value = ""; }} />
-        <Button variant="secondary" loading={importing} onClick={() => file.current?.click()}><FileAudio className="h-3.5 w-3.5" /> Import audio</Button>
+        <Button variant="secondary" loading={importing} onClick={() => file.current?.click()}><FileAudio className="h-3.5 w-3.5" /> {importing ? (progress < 1 ? `Uploading ${Math.round(progress * 100)}%` : "Starting…") : "Import audio"}</Button>
       </div>
       {error && <div className="mb-3 text-[12.5px] text-danger">{error}</div>}
       {!meetings ? <div className="flex justify-center py-10"><Spinner /></div>

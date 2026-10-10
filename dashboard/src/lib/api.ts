@@ -66,15 +66,26 @@ export const api = {
   mcpTools: () => get<{ name: string; description: string }[]>("/api/mcp/tools"),
   capabilities: () => get<Capabilities>("/api/capabilities"),
   markTotpPrompted: () => post<{ ok: boolean }>("/api/account/totp-prompted"),
-  record: async (meta: Record<string, unknown>, blob: Blob, filename: string) => {
-    const fd = new FormData();
-    fd.append("meta", JSON.stringify(meta));
-    fd.append("audio", blob, filename);
-    const r = await fetch("/api/record", { method: "POST", body: fd, headers: { "X-Requested-With": "huddle" }, credentials: "same-origin" });
-    const data = await r.json().catch(() => null);
-    if (!r.ok) throw new ApiError(r.status, (data && data.detail) || r.statusText);
-    return data as { id: string };
-  },
+  /** Upload a recording with progress (XHR: fetch has no upload progress). */
+  record: (meta: Record<string, unknown>, blob: Blob, filename: string, onProgress?: (fraction: number) => void) =>
+    new Promise<{ id: string }>((resolve, reject) => {
+      const fd = new FormData();
+      fd.append("meta", JSON.stringify(meta));
+      fd.append("audio", blob, filename);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/record");
+      xhr.setRequestHeader("X-Requested-With", "huddle");
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(e.loaded / e.total); };
+      xhr.onload = () => {
+        let data: { id?: string; detail?: string } | null = null;
+        try { data = JSON.parse(xhr.responseText); } catch { data = null; }
+        if (xhr.status >= 200 && xhr.status < 300 && data?.id) resolve({ id: data.id });
+        else reject(new ApiError(xhr.status, data?.detail || (xhr.status === 413 ? "The file is larger than the server or the proxy allows." : xhr.status === 0 ? "The upload was interrupted." : `Upload failed (${xhr.status}).`)));
+      };
+      xhr.onerror = () => reject(new ApiError(0, "The upload failed. Check the connection and any proxy limits."));
+      xhr.ontimeout = () => reject(new ApiError(0, "The upload timed out."));
+      xhr.send(fd);
+    }),
   inviteState: (token: string) => get<{ valid: boolean; email: string | null }>(`/api/auth/invite/${encodeURIComponent(token)}`),
   loginTotp: (code: string) => post<Me>("/api/auth/totp", { code }),
   logout: () => post<{ ok: boolean }>("/api/auth/logout"),

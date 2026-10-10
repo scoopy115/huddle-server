@@ -39,14 +39,14 @@ export function Search({ initialQuery, nonce }: { initialQuery?: string; nonce?:
   const empty = !q.trim();
 
   return (
-    <div className="flex h-full flex-col -mx-4 -my-5 md:-mx-6 md:-my-6">
-      <div className="relative flex-1 overflow-y-auto">
+    <div className="flex min-h-[calc(100vh-52px)] flex-col -mx-4 -my-5 md:min-h-full md:-mx-6 md:-my-6">
+      <div className="relative flex-1">
         {/* The search field keeps its place in the tree in both layouts, so typing the first
             character does not remount it and steal focus. */}
         <div className={cn("mx-auto flex w-full max-w-[860px] flex-col px-5", empty ? "min-h-full items-center justify-center py-10" : "py-5")}>
           {empty ? (
             <div className="relative mb-6 flex flex-col items-center text-center">
-              <BrandMark className="pointer-events-none absolute left-1/2 top-1/2 h-[340px] w-[340px] -translate-x-1/2 -translate-y-[40%] text-accent opacity-[0.045] dark:opacity-[0.07]" />
+              <BrandMark className="pointer-events-none absolute left-1/2 top-1/2 h-[300px] w-[300px] -translate-x-1/2 -translate-y-1/2 text-accent opacity-[0.045] dark:opacity-[0.07]" />
               <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-white glow-accent"><SearchIcon className="h-6 w-6 text-white" /></div>
               <div className="font-display text-[17px] font-bold tracking-tight">Search your meeting memory</div>
               <p className="mt-1 max-w-sm text-[13px] text-muted">Full-text search across every transcript, or ask a question. Click a result to jump to that moment in the recording.</p>

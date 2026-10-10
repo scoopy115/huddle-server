@@ -16,7 +16,8 @@ export const purposeOf = (c: DownloadCandidate) => c.purpose
 const title = (m: LocalModel) => m.task === "transcription" && m.meta.whisperSize ? `Whisper ${m.meta.whisperSize} (${m.format === "MLX" ? "Apple Silicon" : m.format === "CTranslate2" ? "CPU / CUDA" : m.format})` : m.name;
 
 function CandidateRow({ c, progress, installed, memoryBytes, onStart, onCancel }: { c: DownloadCandidate; progress?: DownloadProgress; installed: boolean; memoryBytes?: number | null; onStart: () => void; onCancel: () => void }) {
-  const pct = progress && progress.totalBytes ? Math.round((progress.receivedBytes / progress.totalBytes) * 100) : 0;
+  const known = !!progress && progress.totalBytes >= c.sizeBytes * 0.5;
+  const pct = progress && known ? Math.min(100, Math.round((progress.receivedBytes / progress.totalBytes) * 100)) : null;
   const active = progress && (progress.state === "downloading" || progress.state === "verifying");
   const tooBig = !!c.minMemoryBytes && !!memoryBytes && memoryBytes < c.minMemoryBytes;
   return (
@@ -25,12 +26,12 @@ function CandidateRow({ c, progress, installed, memoryBytes, onStart, onCancel }
         <div className="flex items-center gap-2 text-[13px] font-medium">{c.name}{c.recommended && <Badge tone="accent"><Star className="h-3 w-3" /> Recommended</Badge>}</div>
         <div className="mt-0.5 flex flex-wrap gap-x-3 text-[12px] text-muted"><span>{purposeOf(c)}</span><span className="inline-flex items-center gap-1"><Download className="h-3 w-3" />{c.sizeBytes ? fmtBytes(c.sizeBytes) : "size varies"}</span><span>{c.license}</span></div>
         {tooBig && !installed && <div className="mt-0.5 text-[12px] text-danger">Needs {fmtBytes(c.minMemoryBytes!)} of memory.</div>}
-        {active && <div className="mt-1.5 h-1 w-full overflow-hidden rounded bg-fg/10"><div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} /></div>}
+        {active && <div className="mt-1.5 h-1 w-full overflow-hidden rounded bg-fg/10"><div className={cn("h-full bg-accent transition-all", pct == null && "w-1/3 animate-pulse")} style={pct != null ? { width: `${pct}%` } : undefined} /></div>}
         {progress?.state === "failed" && <div className="mt-1 text-[12px] text-danger">{progress.error}</div>}
       </div>
       <div className="shrink-0">
         {installed ? <Badge tone="good"><Check className="h-3 w-3" /> Installed</Badge>
-          : active ? <div className="flex items-center gap-2 text-[12px] text-muted">{progress.state === "verifying" ? "Finishing…" : `${pct}%`}<Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button></div>
+          : active ? <div className="flex items-center gap-2 text-[12px] text-muted">{progress.state === "verifying" ? "Finishing…" : pct != null ? `${pct}%` : "Downloading…"}<Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button></div>
           : <Button size="sm" disabled={tooBig} onClick={onStart}><Download className="h-3.5 w-3.5" /> Download</Button>}
       </div>
     </div>

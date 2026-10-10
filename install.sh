@@ -29,7 +29,9 @@ if [ ! -f .env ]; then
   PORT="${HUDDLE_PORT:-$(ask 'Port (plain HTTP; put your reverse proxy in front)' '48731')}"
   TLS="${HUDDLE_TLS:-$(ask 'Use the built-in TLS proxy instead? (y/n)' 'n')}"
   esc() { printf '%s' "$1" | sed 's/[&/\]/\\&/g'; }
-  sed -i.bak "s/^HUDDLE_SERVER_NAME=.*/HUDDLE_SERVER_NAME=$(esc "$NAME")/; s/^HUDDLE_PORT=.*/HUDDLE_PORT=$PORT/" .env
+  sed -i.bak "s/^HUDDLE_SERVER_NAME=.*/HUDDLE_SERVER_NAME=$(esc "$NAME")/" .env
+  [ "$PORT" != "48731" ] && sed -i.bak "s/\"48731:48731\"/\"$PORT:48731\"/" docker-compose.yml
+  printf 'HUDDLE_PORT=%s\n' "$PORT" >> .env
   case "$TLS" in y|Y|yes|1)
     DOMAIN="${HUDDLE_DOMAIN:-$(ask 'Public domain for Let'"'"'s Encrypt (empty = self-signed)' '')}"
     printf 'COMPOSE_FILE=docker-compose.yml:docker-compose.tls.yml\nHUDDLE_TLS_DIR=/certs\nHUDDLE_DOMAIN=%s\nHUDDLE_CADDYFILE=%s\n' "$DOMAIN" "$([ -n "$DOMAIN" ] && echo Caddyfile.domain || echo Caddyfile.selfsigned)" >> .env ;;

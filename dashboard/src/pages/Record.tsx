@@ -27,10 +27,12 @@ export function Record() {
   const [mode, setMode] = useState<"meeting" | "interview">("meeting");
   const [speakers, setSpeakers] = useState(0);
   const [systemAudio, setSystemAudio] = useState(false);
-  const canShare = typeof navigator !== "undefined" && !!navigator.mediaDevices?.getDisplayMedia;
+  // Only Chromium browsers (Chrome, Edge, Brave, Opera) hand over the audio of a shared tab or screen.
+  const canShare = typeof navigator !== "undefined" && !!navigator.mediaDevices?.getDisplayMedia && /Chrome|Chromium|Edg|OPR|Brave/.test(navigator.userAgent) && !/Firefox|FxiOS/.test(navigator.userAgent);
   const display = useRef<MediaStream | null>(null);
   const [state, setState] = useState<"idle" | "recording" | "paused" | "uploading">("idle");
   const [elapsed, setElapsed] = useState(0);
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [unsupported] = useState(() => typeof MediaRecorder === "undefined" || !navigator.mediaDevices);
   const rec = useRef<MediaRecorder | null>(null);
@@ -131,7 +133,7 @@ export function Record() {
     const r = rec.current; if (!r) return;
     if (r.state === "paused") pausedFor.current += Date.now() - pausedAt.current;
     const duration = (Date.now() - startedAt.current - pausedFor.current) / 1000;
-    setState("uploading");
+    setState("uploading"); setProgress(0);
     await new Promise<void>((resolve) => { r.onstop = () => resolve(); r.stop(); });
     stream.current?.getTracks().forEach((t) => t.stop());
     display.current?.getTracks().forEach((t) => t.stop());
@@ -149,7 +151,7 @@ export function Record() {
         id, startedAt: startedAt.current / 1000, durationSec: duration, format: ext, title: title.trim() || null,
         language: language === "auto" ? null : language, notesLanguage, mode, speakerCount: speakers || null,
         inputDevice: (devices.find((x) => x.deviceId === device)?.label || "Browser microphone") + (display.current || systemAudio ? " + system audio" : ""),
-      }, blob, `recording.${ext}`);
+      }, blob, `recording.${ext}`, setProgress);
       navigate(`/meetings/${encodeURIComponent(res.id)}`);
     } catch (e) { setError(errorMessage(e)); setState("idle"); }
   };
@@ -168,7 +170,7 @@ export function Record() {
         )}
         <div className="relative font-display text-[72px] font-bold leading-none tabular-nums tracking-tight">{fmtTime(elapsed)}</div>
         <div className="relative mt-3 flex items-center justify-center gap-2 text-[13px] text-muted">
-          {state === "recording" ? <><span className="h-2 w-2 rounded-full bg-record animate-record" /> Recording</> : state === "paused" ? <><Pause className="h-3.5 w-3.5" /> Paused</> : state === "uploading" ? "Sending to the server…" : <><Mic className="h-3.5 w-3.5" /> Ready to record</>}
+          {state === "recording" ? <><span className="h-2 w-2 rounded-full bg-record animate-record" /> Recording</> : state === "paused" ? <><Pause className="h-3.5 w-3.5" /> Paused</> : state === "uploading" ? (progress < 1 ? `Sending to the server, ${Math.round(progress * 100)}%` : "Starting processing…") : <><Mic className="h-3.5 w-3.5" /> Ready to record</>}
         </div>
       </div>
       <canvas ref={canvas} className="relative h-[72px] w-full max-w-[560px]" />
